@@ -109,8 +109,8 @@ const resetFilters = () => {
       </div>
 
       <!-- Filter Controls Bar -->
-      <div class="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs space-y-3">
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3">
+      <div class="bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3.5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-3.5">
           <!-- Text Search -->
           <div class="md:col-span-2">
             <div class="relative">
@@ -118,10 +118,10 @@ const resetFilters = () => {
                 v-model="search"
                 type="text"
                 placeholder="Search issues by key, title, description..."
-                class="w-full pl-9 pr-4 py-1.5 text-xs rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500 placeholder:text-slate-400"
+                class="w-full pl-10 pr-4 py-2 text-sm rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 placeholder:text-slate-400 bg-white"
                 @keyup.enter="applyFilters(1)"
               />
-              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+              <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
                 <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                 </svg>
@@ -133,7 +133,7 @@ const resetFilters = () => {
           <div>
             <select
               v-model="status"
-              class="w-full py-1.5 text-xs rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+              class="w-full py-2 px-3 text-sm rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
               @change="applyFilters(1)"
             >
               <option value="">All Statuses</option>
@@ -147,7 +147,7 @@ const resetFilters = () => {
           <div>
             <select
               v-model="priority"
-              class="w-full py-1.5 text-xs rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+              class="w-full py-2 px-3 text-sm rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
               @change="applyFilters(1)"
             >
               <option value="">All Priorities</option>
@@ -161,7 +161,7 @@ const resetFilters = () => {
           <div>
             <select
               v-model="assignee"
-              class="w-full py-1.5 text-xs rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500"
+              class="w-full py-2 px-3 text-sm rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
               @change="applyFilters(1)"
             >
               <option value="">All Assignees</option>
@@ -172,6 +172,7 @@ const resetFilters = () => {
             </select>
           </div>
         </div>
+
 
         <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
           <span class="text-slate-500 font-medium">

@@ -7,8 +7,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(
     DEBUG=(bool, True),
     SECRET_KEY=(str, "django-insecure-dev-key-change-in-production-1234567890"),
-    ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost"]),
+    ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost", "testserver"]),
 )
+
 
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -45,6 +46,11 @@ MIDDLEWARE = [
 INERTIA_LAYOUT = "base.html"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "project_list"
+
+# CSRF configuration for Inertia.js / Axios
+CSRF_COOKIE_NAME = "XSRF-TOKEN"
+CSRF_HEADER_NAME = "HTTP_X_XSRF_TOKEN"
+CSRF_COOKIE_HTTPONLY = False
 
 ROOT_URLCONF = "config.urls"
 

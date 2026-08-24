@@ -124,8 +124,14 @@ class ProjectService:
         }
 
         results: List[Dict[str, Any]] = []
+        is_global_admin = PermissionService.is_global_admin(user)
         for p in projects_qs:
-            role = memberships_map.get(p.id, ProjectRole.ADMIN if p.owner_id == user.id else ProjectRole.VIEWER)
+            if is_global_admin:
+                role = memberships_map.get(p.id, ProjectRole.ADMIN)
+            else:
+                role = memberships_map.get(
+                    p.id, ProjectRole.ADMIN if p.owner_id == user.id else ProjectRole.VIEWER
+                )
             results.append({
                 "id": p.id,
                 "name": p.name,
@@ -140,3 +146,21 @@ class ProjectService:
             })
 
         return results
+
+    @classmethod
+    def get_all_projects_for_management(cls) -> List[Dict[str, Any]]:
+        """
+        Return all projects for the global user management access matrix.
+        """
+        projects = Project.objects.order_by("name")
+        return [
+            {
+                "id": p.id,
+                "name": p.name,
+                "slug": p.slug,
+                "key": p.key,
+                "owner_id": p.owner_id,
+            }
+            for p in projects
+        ]
+

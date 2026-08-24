@@ -33,6 +33,13 @@ from tracker.views.comments import (
     comment_update_view,
     comment_delete_view,
 )
+from tracker.views.users import (
+    user_management_index_view,
+    user_create_view,
+    user_update_view,
+    user_project_access_view,
+    user_delete_view,
+)
 
 __all__ = [
     "login_view",
@@ -62,4 +69,9 @@ __all__ = [
     "comment_create_view",
     "comment_update_view",
     "comment_delete_view",
+    "user_management_index_view",
+    "user_create_view",
+    "user_update_view",
+    "user_project_access_view",
+    "user_delete_view",
 ]

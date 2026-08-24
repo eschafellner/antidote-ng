@@ -16,6 +16,12 @@ urlpatterns = [
     path("login/", views.login_view, name="login"),
     path("register/", views.register_view, name="register"),
     path("logout/", views.logout_view, name="logout"),
+    # Global User Administration
+    path("users/", views.user_management_index_view, name="user_management_index"),
+    path("users/new/", views.user_create_view, name="user_create"),
+    path("users/<int:user_id>/update/", views.user_update_view, name="user_update"),
+    path("users/<int:user_id>/projects/", views.user_project_access_view, name="user_project_access"),
+    path("users/<int:user_id>/delete/", views.user_delete_view, name="user_delete"),
     # Project management
     path("projects/", views.project_list_view, name="project_list"),
     path("projects/new/", views.project_create_view, name="project_create"),

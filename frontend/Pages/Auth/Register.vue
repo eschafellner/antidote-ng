@@ -62,14 +62,14 @@ const submit = () => {
         <!-- Global Errors -->
         <div
           v-if="errors.non_field_errors"
-          class="mb-5 rounded-lg bg-rose-50 border border-rose-200 p-3 text-xs text-rose-700 font-medium"
+          class="mb-6 rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-xs text-rose-700 font-medium"
         >
           {{ errors.non_field_errors }}
         </div>
 
         <form class="space-y-4" @submit.prevent="submit">
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
               Username <span class="text-rose-500">*</span>
             </label>
             <input
@@ -78,15 +78,15 @@ const submit = () => {
               required
               autofocus
               placeholder="johndoe"
-              class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+              class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm px-3.5 py-2.5 leading-relaxed placeholder:text-slate-400 bg-white"
             />
-            <p v-if="errors.username" class="mt-1 text-xs text-rose-600 font-medium">
+            <p v-if="errors.username" class="mt-1.5 text-xs text-rose-600 font-medium">
               {{ errors.username }}
             </p>
           </div>
 
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
               Email Address <span class="text-rose-500">*</span>
             </label>
             <input
@@ -95,40 +95,40 @@ const submit = () => {
               required
               :disabled="!!invite"
               placeholder="john@example.com"
-              class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm disabled:bg-slate-100 disabled:text-slate-500"
+              class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm px-3.5 py-2.5 leading-relaxed placeholder:text-slate-400 disabled:bg-slate-100 disabled:text-slate-500"
             />
-            <p v-if="errors.email" class="mt-1 text-xs text-rose-600 font-medium">
+            <p v-if="errors.email" class="mt-1.5 text-xs text-rose-600 font-medium">
               {{ errors.email }}
             </p>
           </div>
 
-          <div class="grid grid-cols-2 gap-3">
+          <div class="grid grid-cols-2 gap-3.5">
             <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 First Name
               </label>
               <input
                 v-model="form.first_name"
                 type="text"
                 placeholder="John"
-                class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm px-3.5 py-2.5 leading-relaxed placeholder:text-slate-400 bg-white"
               />
             </div>
             <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 Last Name
               </label>
               <input
                 v-model="form.last_name"
                 type="text"
                 placeholder="Doe"
-                class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm px-3.5 py-2.5 leading-relaxed placeholder:text-slate-400 bg-white"
               />
             </div>
           </div>
 
           <div>
-            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-700 mb-1">
+            <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
               Password <span class="text-rose-500">*</span>
             </label>
             <input
@@ -136,9 +136,9 @@ const submit = () => {
               type="password"
               required
               placeholder="••••••••"
-              class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+              class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm px-3.5 py-2.5 leading-relaxed placeholder:text-slate-400 bg-white"
             />
-            <p v-if="errors.password" class="mt-1 text-xs text-rose-600 font-medium">
+            <p v-if="errors.password" class="mt-1.5 text-xs text-rose-600 font-medium">
               {{ errors.password }}
             </p>
           </div>
@@ -146,7 +146,7 @@ const submit = () => {
           <button
             type="submit"
             :disabled="form.processing"
-            class="w-full mt-2 flex justify-center py-2.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+            class="w-full mt-3 flex justify-center py-2.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
           >
             Create Account
           </button>

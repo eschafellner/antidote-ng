@@ -123,20 +123,21 @@ const insertSnippet = (prefix, suffix = '') => {
     </div>
 
     <!-- Write Mode: Textarea -->
-    <div v-show="activeTab === 'write'" class="p-2">
+    <div v-show="activeTab === 'write'" class="p-1">
       <textarea
         ref="textareaRef"
         :value="modelValue"
         :rows="rows"
         :placeholder="placeholder"
-        class="w-full border-0 focus:ring-0 text-sm text-slate-900 placeholder:text-slate-400 font-mono text-xs resize-y"
+        class="w-full border-0 focus:ring-0 text-[13.5px] text-slate-900 placeholder:text-slate-400 font-mono leading-relaxed p-3.5 resize-y bg-transparent"
         @input="emit('update:modelValue', $event.target.value)"
       ></textarea>
     </div>
 
     <!-- Preview Mode -->
-    <div v-show="activeTab === 'preview'" class="p-3.5 min-h-[100px] bg-slate-50/30">
+    <div v-show="activeTab === 'preview'" class="p-4 min-h-[110px] bg-slate-50/30">
       <MarkdownViewer :content="modelValue" placeholder="Nothing to preview yet." />
     </div>
+
   </div>
 </template>

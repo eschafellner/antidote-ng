@@ -30,6 +30,7 @@ const currentPath = computed(() => page.url);
 const isBoardActive = computed(() => currentPath.value.includes('/board'));
 const isIssuesActive = computed(() => currentPath.value.includes('/issues') && !isBoardActive.value);
 const isSettingsActive = computed(() => currentPath.value.includes('/settings'));
+const isUsersActive = computed(() => currentPath.value.includes('/users'));
 </script>
 
 <template>
@@ -49,6 +50,23 @@ const isSettingsActive = computed(() => currentPath.value.includes('/settings'))
               <span class="text-base font-extrabold bg-gradient-to-r from-slate-900 to-slate-700 bg-clip-text text-transparent">
                 Antidote
               </span>
+            </Link>
+
+            <!-- Global Admin User Management Link (when outside project context) -->
+            <Link
+              v-if="!project && currentUser?.is_global_admin"
+              href="/users/"
+              :class="[
+                'ml-2 px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5',
+                isUsersActive
+                  ? 'bg-indigo-50 text-indigo-700 font-bold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100',
+              ]"
+            >
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+              User Management
             </Link>
 
             <!-- Project Breadcrumb & Subnav (when inside a project) -->
@@ -98,7 +116,7 @@ const isSettingsActive = computed(() => currentPath.value.includes('/settings'))
             </Link>
 
             <Link
-              v-if="project.is_owner || project.user_role === 'admin'"
+              v-if="currentUser?.is_global_admin || project.is_owner || project.user_role === 'admin'"
               :href="`/projects/${project.slug}/settings/`"
               :class="[
                 'px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5',
@@ -118,7 +136,7 @@ const isSettingsActive = computed(() => currentPath.value.includes('/settings'))
           <!-- Right side: Create button & User dropdown -->
           <div class="flex items-center gap-3">
             <button
-              v-if="project && project.can_create_issue !== false"
+              v-if="project && (currentUser?.is_global_admin || project.can_create_issue !== false)"
               type="button"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg shadow-xs hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
               @click="showCreateModal = true"
@@ -152,6 +170,12 @@ const isSettingsActive = computed(() => currentPath.value.includes('/settings'))
                   <p class="text-xs text-slate-500 truncate">
                     {{ currentUser?.email }}
                   </p>
+                  <span
+                    v-if="currentUser?.is_global_admin"
+                    class="mt-1 inline-block text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-50 px-1.5 py-0.2 rounded border border-indigo-100"
+                  >
+                    Global Admin
+                  </span>
                 </div>
 
                 <Link
@@ -161,9 +185,17 @@ const isSettingsActive = computed(() => currentPath.value.includes('/settings'))
                   All Projects
                 </Link>
 
+                <Link
+                  v-if="currentUser?.is_global_admin"
+                  href="/users/"
+                  class="block px-4 py-2 text-indigo-600 hover:bg-indigo-50 font-medium transition-colors"
+                >
+                  User Management
+                </Link>
+
                 <button
                   type="button"
-                  class="w-full text-left px-4 py-2 text-rose-600 hover:bg-rose-50 font-medium transition-colors"
+                  class="w-full text-left px-4 py-2 text-rose-600 hover:bg-rose-50 font-medium transition-colors border-t border-slate-100 mt-1"
                   @click="logout"
                 >
                   Log Out
@@ -174,6 +206,7 @@ const isSettingsActive = computed(() => currentPath.value.includes('/settings'))
         </div>
       </div>
     </header>
+
 
     <!-- Main Content Area -->
     <main class="flex-1 flex flex-col">

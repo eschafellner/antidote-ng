@@ -204,20 +204,20 @@ const restoreIssue = () => {
               v-model="editTitle"
               type="text"
               autofocus
-              class="w-full rounded-lg border-indigo-500 font-bold text-lg text-slate-900 focus:ring-indigo-500"
+              class="w-full rounded-xl border-indigo-500 font-bold text-lg text-slate-900 focus:ring-2 focus:ring-indigo-500/20 px-3.5 py-2"
               @keyup.enter="saveTitle"
               @keyup.esc="isEditingTitle = false"
             />
             <button
               type="button"
-              class="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+              class="px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors"
               @click="saveTitle"
             >
               Save
             </button>
             <button
               type="button"
-              class="px-3 py-1.5 text-xs font-medium text-slate-600 rounded-lg border hover:bg-slate-50"
+              class="px-3.5 py-2 text-xs font-medium text-slate-600 rounded-xl border hover:bg-slate-50 transition-colors"
               @click="isEditingTitle = false"
             >
               Cancel
@@ -227,7 +227,7 @@ const restoreIssue = () => {
             v-else
             :class="[
               'text-xl font-bold text-slate-900 tracking-tight leading-snug',
-              permissions.can_edit ? 'hover:bg-slate-50 cursor-pointer rounded p-1 -ml-1 transition-colors' : '',
+              permissions.can_edit ? 'hover:bg-slate-50 cursor-pointer rounded-lg p-1.5 -ml-1.5 transition-colors' : '',
             ]"
             title="Click to edit title"
             @click="permissions.can_edit && (isEditingTitle = true)"
@@ -237,14 +237,14 @@ const restoreIssue = () => {
         </div>
 
         <!-- Inline Attributes Grid: Status, Priority, Type, Assignee, Due Date -->
-        <div class="bg-slate-50/80 rounded-xl p-4 border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs">
+        <div class="bg-slate-50/90 rounded-2xl p-5 border border-slate-200/80 grid grid-cols-2 sm:grid-cols-3 gap-4 sm:gap-5">
           <!-- Status -->
           <div>
-            <span class="text-slate-400 block font-semibold uppercase text-[10px] tracking-wider mb-1">Status</span>
+            <span class="text-slate-500 block font-bold uppercase text-[11px] tracking-wider mb-1.5">Status</span>
             <select
               :value="issue.status"
               :disabled="!permissions.can_edit"
-              class="w-full py-1 px-2 text-xs font-medium rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full py-2 px-3 text-sm font-medium rounded-xl border-slate-300 bg-white shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
               @change="e => updateField('status', e.target.value)"
             >
               <option v-for="s in statuses" :key="s.value" :value="s.value">
@@ -255,11 +255,11 @@ const restoreIssue = () => {
 
           <!-- Priority -->
           <div>
-            <span class="text-slate-400 block font-semibold uppercase text-[10px] tracking-wider mb-1">Priority</span>
+            <span class="text-slate-500 block font-bold uppercase text-[11px] tracking-wider mb-1.5">Priority</span>
             <select
               :value="issue.priority"
               :disabled="!permissions.can_edit"
-              class="w-full py-1 px-2 text-xs font-medium rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full py-2 px-3 text-sm font-medium rounded-xl border-slate-300 bg-white shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
               @change="e => updateField('priority', e.target.value)"
             >
               <option v-for="p in priorities" :key="p.value" :value="p.value">
@@ -270,11 +270,11 @@ const restoreIssue = () => {
 
           <!-- Type -->
           <div>
-            <span class="text-slate-400 block font-semibold uppercase text-[10px] tracking-wider mb-1">Type</span>
+            <span class="text-slate-500 block font-bold uppercase text-[11px] tracking-wider mb-1.5">Type</span>
             <select
               :value="issue.type"
               :disabled="!permissions.can_edit"
-              class="w-full py-1 px-2 text-xs font-medium rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full py-2 px-3 text-sm font-medium rounded-xl border-slate-300 bg-white shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
               @change="e => updateField('type', e.target.value)"
             >
               <option v-for="t in types" :key="t.value" :value="t.value">
@@ -285,11 +285,11 @@ const restoreIssue = () => {
 
           <!-- Assignee -->
           <div>
-            <span class="text-slate-400 block font-semibold uppercase text-[10px] tracking-wider mb-1">Assignee</span>
+            <span class="text-slate-500 block font-bold uppercase text-[11px] tracking-wider mb-1.5">Assignee</span>
             <select
               :value="issue.assignee ? issue.assignee.id : ''"
               :disabled="!permissions.can_edit"
-              class="w-full py-1 px-2 text-xs font-medium rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full py-2 px-3 text-sm font-medium rounded-xl border-slate-300 bg-white shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
               @change="e => updateField('assignee_id', e.target.value ? Number(e.target.value) : null)"
             >
               <option value="">Unassigned</option>
@@ -301,25 +301,26 @@ const restoreIssue = () => {
 
           <!-- Reporter -->
           <div>
-            <span class="text-slate-400 block font-semibold uppercase text-[10px] tracking-wider mb-1">Reporter</span>
-            <div class="flex items-center gap-1.5 py-1">
+            <span class="text-slate-500 block font-bold uppercase text-[11px] tracking-wider mb-1.5">Reporter</span>
+            <div class="flex items-center gap-2 py-1.5 px-1">
               <UserAvatar :user="issue.reporter" size="sm" />
-              <span class="text-slate-700 font-medium">{{ issue.reporter.username }}</span>
+              <span class="text-slate-800 text-sm font-medium">{{ issue.reporter.username }}</span>
             </div>
           </div>
 
           <!-- Due Date -->
           <div>
-            <span class="text-slate-400 block font-semibold uppercase text-[10px] tracking-wider mb-1">Due Date</span>
+            <span class="text-slate-500 block font-bold uppercase text-[11px] tracking-wider mb-1.5">Due Date</span>
             <input
               :value="issue.due_date || ''"
               type="date"
               :disabled="!permissions.can_edit"
-              class="w-full py-1 px-2 text-xs font-medium rounded-lg border-slate-300 focus:border-indigo-500 focus:ring-indigo-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              class="w-full py-2 px-3 text-sm font-medium rounded-xl border-slate-300 bg-white shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 disabled:bg-slate-100 disabled:cursor-not-allowed"
               @change="e => updateField('due_date', e.target.value || null)"
             />
           </div>
         </div>
+
 
         <!-- Description Section (Markdown Edit & View) -->
         <div class="space-y-2">

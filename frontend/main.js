@@ -1,6 +1,11 @@
 import { createApp, h } from 'vue';
 import { createInertiaApp } from '@inertiajs/vue3';
+import axios from 'axios';
 import './css/app.css';
+
+// Configure Axios CSRF cookie & header names to match Django settings
+axios.defaults.xsrfCookieName = 'XSRF-TOKEN';
+axios.defaults.xsrfHeaderName = 'X-XSRF-TOKEN';
 
 createInertiaApp({
   resolve: name => {

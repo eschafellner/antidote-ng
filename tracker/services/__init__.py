@@ -7,6 +7,7 @@ from tracker.services.invitations import InvitationService, MembershipService
 from tracker.services.auth import AuthService
 from tracker.services.attachments import AttachmentService
 from tracker.services.comments import CommentService
+from tracker.services.users import GlobalUserService
 
 __all__ = [
     "IssueKeyService",
@@ -19,4 +20,5 @@ __all__ = [
     "AuthService",
     "AttachmentService",
     "CommentService",
+    "GlobalUserService",
 ]

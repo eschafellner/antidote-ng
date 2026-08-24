@@ -61,14 +61,14 @@ const submit = () => {
 
     <div class="flex min-h-full items-center justify-center p-4 text-center sm:p-0">
       <div
-        class="relative transform overflow-hidden rounded-xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-xl border border-slate-200"
+        class="relative transform overflow-hidden rounded-2xl bg-white text-left shadow-2xl transition-all sm:my-8 sm:w-full sm:max-w-xl border border-slate-200"
       >
         <!-- Modal Header -->
-        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
-          <h3 class="text-base font-semibold text-slate-900">Create New Issue</h3>
+        <div class="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+          <h3 class="text-base font-bold text-slate-900">Create New Issue</h3>
           <button
             type="button"
-            class="text-slate-400 hover:text-slate-500 rounded-lg p-1 transition-colors"
+            class="text-slate-400 hover:text-slate-600 rounded-lg p-1.5 transition-colors"
             @click="emit('close')"
           >
             <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -79,10 +79,10 @@ const submit = () => {
 
         <!-- Form Body -->
         <form @submit.prevent="submit">
-          <div class="px-6 py-5 space-y-4">
+          <div class="px-6 py-6 space-y-5">
             <!-- Title -->
             <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 Title <span class="text-rose-500">*</span>
               </label>
               <input
@@ -90,25 +90,25 @@ const submit = () => {
                 type="text"
                 required
                 placeholder="What needs to be done?"
-                class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm placeholder:text-slate-400"
+                class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 leading-relaxed placeholder:text-slate-400 bg-white"
               />
-              <p v-if="form.errors.title" class="mt-1 text-xs text-rose-600 font-medium">
+              <p v-if="form.errors.title" class="mt-1.5 text-xs text-rose-600 font-medium">
                 {{ form.errors.title }}
               </p>
             </div>
 
             <!-- Description (Markdown) -->
             <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                 Description (Markdown)
               </label>
               <textarea
                 v-model="form.description"
                 rows="4"
                 placeholder="Add detailed context, reproduction steps, or acceptance criteria..."
-                class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm placeholder:text-slate-400 font-mono text-xs"
+                class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-mono text-[13.5px] leading-relaxed p-3.5 placeholder:text-slate-400 bg-white resize-y"
               ></textarea>
-              <p v-if="form.errors.description" class="mt-1 text-xs text-rose-600 font-medium">
+              <p v-if="form.errors.description" class="mt-1.5 text-xs text-rose-600 font-medium">
                 {{ form.errors.description }}
               </p>
             </div>
@@ -117,10 +117,10 @@ const submit = () => {
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <!-- Issue Type -->
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Type</label>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Type</label>
                 <select
                   v-model="form.type"
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 bg-white"
                 >
                   <option value="task">Task</option>
                   <option value="bug">Bug</option>
@@ -130,10 +130,10 @@ const submit = () => {
 
               <!-- Priority -->
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Priority</label>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Priority</label>
                 <select
                   v-model="form.priority"
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 bg-white"
                 >
                   <option value="low">Low</option>
                   <option value="medium">Medium</option>
@@ -144,10 +144,10 @@ const submit = () => {
 
               <!-- Status -->
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Status</label>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Status</label>
                 <select
                   v-model="form.status"
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 bg-white"
                 >
                   <option value="todo">To Do</option>
                   <option value="in_progress">In Progress</option>
@@ -159,10 +159,10 @@ const submit = () => {
 
               <!-- Assignee -->
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Assignee</label>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Assignee</label>
                 <select
                   v-model="form.assignee_id"
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 bg-white"
                 >
                   <option value="">Unassigned</option>
                   <option v-for="m in members" :key="m.user_id" :value="m.user_id">
@@ -174,20 +174,20 @@ const submit = () => {
 
             <!-- Due Date -->
             <div>
-              <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Due Date</label>
+              <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">Due Date</label>
               <input
                 v-model="form.due_date"
                 type="date"
-                class="w-full sm:w-1/2 rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                class="w-full sm:w-1/2 rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 bg-white"
               />
             </div>
           </div>
 
           <!-- Modal Footer -->
-          <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-xl">
+          <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-2xl">
             <button
               type="button"
-              class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
+              class="px-4 py-2.5 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
               @click="emit('close')"
             >
               Cancel
@@ -195,7 +195,7 @@ const submit = () => {
             <button
               type="submit"
               :disabled="form.processing"
-              class="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-indigo-600 border border-transparent rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
+              class="inline-flex items-center px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 border border-transparent rounded-xl shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-colors"
             >
               <svg
                 v-if="form.processing"

@@ -156,9 +156,9 @@ const createProject = () => {
           </div>
 
           <form @submit.prevent="createProject">
-            <div class="p-6 space-y-4">
+            <div class="p-6 space-y-5">
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   Project Name <span class="text-rose-500">*</span>
                 </label>
                 <input
@@ -166,15 +166,15 @@ const createProject = () => {
                   type="text"
                   required
                   placeholder="e.g. Mobile Banking App"
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm font-medium px-3.5 py-2.5 bg-white"
                 />
-                <p v-if="form.errors.name" class="mt-1 text-xs text-rose-600 font-medium">
+                <p v-if="form.errors.name" class="mt-1.5 text-xs text-rose-600 font-medium">
                   {{ form.errors.name }}
                 </p>
               </div>
 
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   Project Key <span class="text-rose-500">*</span>
                   <span class="text-slate-400 font-normal text-[11px] ml-1">(2-10 uppercase chars, e.g. 'BANK')</span>
                 </label>
@@ -184,30 +184,30 @@ const createProject = () => {
                   required
                   maxlength="10"
                   placeholder="BANK"
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 font-mono uppercase text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 font-mono font-bold uppercase text-sm px-3.5 py-2.5 bg-white"
                 />
-                <p v-if="form.errors.key" class="mt-1 text-xs text-rose-600 font-medium">
+                <p v-if="form.errors.key" class="mt-1.5 text-xs text-rose-600 font-medium">
                   {{ form.errors.key }}
                 </p>
               </div>
 
               <div>
-                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
                   Description
                 </label>
                 <textarea
                   v-model="form.description"
                   rows="3"
                   placeholder="Brief summary of this project..."
-                  class="w-full rounded-lg border-slate-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-sm"
+                  class="w-full rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 text-sm p-3.5 leading-relaxed bg-white"
                 ></textarea>
               </div>
             </div>
 
-            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-xl">
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-3 rounded-b-2xl">
               <button
                 type="button"
-                class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50"
+                class="px-4 py-2.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 transition-colors"
                 @click="showNewProjectModal = false"
               >
                 Cancel
@@ -215,12 +215,13 @@ const createProject = () => {
               <button
                 type="submit"
                 :disabled="form.processing"
-                class="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                class="px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 rounded-xl shadow-xs hover:bg-indigo-700 disabled:opacity-50 transition-colors"
               >
                 Create Project
               </button>
             </div>
           </form>
+
         </div>
       </div>
     </div>
