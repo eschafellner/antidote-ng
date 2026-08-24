@@ -1,9 +1,159 @@
 {
+  "_AppLayout-Dv9hFiCM.js": {
+    "file": "assets/AppLayout-Dv9hFiCM.js",
+    "name": "AppLayout",
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "_IssueTypeBadge-V3mutQ4z.js": {
+    "file": "assets/IssueTypeBadge-V3mutQ4z.js",
+    "name": "IssueTypeBadge",
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "_vendor-core-BB7qzPmp.js": {
+    "file": "assets/vendor-core-BB7qzPmp.js",
+    "name": "vendor-core"
+  },
+  "_vendor-tools-o-WtHQZP.js": {
+    "file": "assets/vendor-tools-o-WtHQZP.js",
+    "name": "vendor-tools",
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "frontend/Pages/Admin/Users/Index.vue": {
+    "file": "assets/Index-DSLU-ch4.js",
+    "name": "Index",
+    "src": "frontend/Pages/Admin/Users/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js",
+      "_AppLayout-Dv9hFiCM.js"
+    ]
+  },
+  "frontend/Pages/Auth/InviteAccept.vue": {
+    "file": "assets/InviteAccept-BzhMskO9.js",
+    "name": "InviteAccept",
+    "src": "frontend/Pages/Auth/InviteAccept.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "frontend/Pages/Auth/InviteExpired.vue": {
+    "file": "assets/InviteExpired-CPkY0EEB.js",
+    "name": "InviteExpired",
+    "src": "frontend/Pages/Auth/InviteExpired.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "frontend/Pages/Auth/Login.vue": {
+    "file": "assets/Login-DTd5FM8N.js",
+    "name": "Login",
+    "src": "frontend/Pages/Auth/Login.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "frontend/Pages/Auth/Register.vue": {
+    "file": "assets/Register-CqB-NkCF.js",
+    "name": "Register",
+    "src": "frontend/Pages/Auth/Register.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
+  "frontend/Pages/Issues/Index.vue": {
+    "file": "assets/Index-DycJM7x5.js",
+    "name": "Index",
+    "src": "frontend/Pages/Issues/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js",
+      "_AppLayout-Dv9hFiCM.js",
+      "_IssueTypeBadge-V3mutQ4z.js"
+    ]
+  },
+  "frontend/Pages/Issues/Show.vue": {
+    "file": "assets/Show-B_C6qNRa.js",
+    "name": "Show",
+    "src": "frontend/Pages/Issues/Show.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js",
+      "_AppLayout-Dv9hFiCM.js",
+      "_vendor-tools-o-WtHQZP.js"
+    ]
+  },
+  "frontend/Pages/Projects/Board.vue": {
+    "file": "assets/Board-CPapvEFJ.js",
+    "name": "Board",
+    "src": "frontend/Pages/Projects/Board.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js",
+      "_vendor-tools-o-WtHQZP.js",
+      "_AppLayout-Dv9hFiCM.js",
+      "_IssueTypeBadge-V3mutQ4z.js"
+    ]
+  },
+  "frontend/Pages/Projects/Index.vue": {
+    "file": "assets/Index-COxMl_lB.js",
+    "name": "Index",
+    "src": "frontend/Pages/Projects/Index.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js",
+      "_AppLayout-Dv9hFiCM.js"
+    ]
+  },
+  "frontend/Pages/Projects/Settings.vue": {
+    "file": "assets/Settings-BW9RA3Ki.js",
+    "name": "Settings",
+    "src": "frontend/Pages/Projects/Settings.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js",
+      "_AppLayout-Dv9hFiCM.js"
+    ]
+  },
+  "frontend/Pages/Projects/Show.vue": {
+    "file": "assets/Show-B-HcDGop.js",
+    "name": "Show",
+    "src": "frontend/Pages/Projects/Show.vue",
+    "isDynamicEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ]
+  },
   "frontend/main.js": {
-    "file": "assets/main-CgYdPGnM.js",
+    "file": "assets/main-BVnKmL2E.js",
     "name": "main",
     "src": "frontend/main.js",
     "isEntry": true,
+    "imports": [
+      "_vendor-core-BB7qzPmp.js"
+    ],
+    "dynamicImports": [
+      "frontend/Pages/Admin/Users/Index.vue",
+      "frontend/Pages/Auth/InviteAccept.vue",
+      "frontend/Pages/Auth/InviteExpired.vue",
+      "frontend/Pages/Auth/Login.vue",
+      "frontend/Pages/Auth/Register.vue",
+      "frontend/Pages/Issues/Index.vue",
+      "frontend/Pages/Issues/Show.vue",
+      "frontend/Pages/Projects/Board.vue",
+      "frontend/Pages/Projects/Index.vue",
+      "frontend/Pages/Projects/Settings.vue",
+      "frontend/Pages/Projects/Show.vue"
+    ],
     "css": [
       "assets/main-BWIwo4_y.css"
     ]

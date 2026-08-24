@@ -9,13 +9,14 @@ axios.defaults.xsrfHeaderName = 'X-XSRF-TOKEN';
 
 createInertiaApp({
   resolve: name => {
-    const pages = import.meta.glob('./Pages/**/*.vue', { eager: true });
-    const page = pages[`./Pages/${name}.vue`];
-    if (!page) {
+    const pages = import.meta.glob('./Pages/**/*.vue');
+    const importPage = pages[`./Pages/${name}.vue`];
+    if (!importPage) {
       throw new Error(`Inertia page component "./Pages/${name}.vue" was not found.`);
     }
-    return page.default || page;
+    return importPage();
   },
+
   setup({ el, App, props, plugin }) {
     createApp({ render: () => h(App, props) })
       .use(plugin)

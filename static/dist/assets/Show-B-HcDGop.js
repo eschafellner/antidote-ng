@@ -1,0 +1,1 @@
+import{a5 as r,Y as s,B as o,K as c}from"./vendor-core-BB7qzPmp.js";const a={class:"min-h-screen bg-slate-50 flex items-center justify-center text-slate-500 text-sm"},u={__name:"Show",props:{project:{type:Object,required:!0}},setup(e){const t=e;return r(()=>{s.visit(`/projects/${t.project.slug}/board/`)}),(n,i)=>(o(),c("div",a," Redirecting to board... "))}};export{u as default};
