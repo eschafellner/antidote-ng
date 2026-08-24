@@ -8,6 +8,7 @@ env = environ.Env(
     DEBUG=(bool, True),
     SECRET_KEY=(str, "django-insecure-dev-key-change-in-production-1234567890"),
     ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost", "testserver"]),
+    CSRF_TRUSTED_ORIGINS=(list, []),
 )
 
 
@@ -16,6 +17,7 @@ environ.Env.read_env(BASE_DIR / ".env")
 SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
+CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
 
 # Application definition
 INSTALLED_APPS = [
@@ -128,3 +130,13 @@ ALLOWED_ATTACHMENT_EXTENSIONS = [
     # Images
     "png", "jpg", "jpeg", "gif", "webp", "svg",
 ]
+
+# Production Security Settings
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = "DENY"
+

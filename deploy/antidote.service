@@ -1,0 +1,31 @@
+[Unit]
+Description=Antidote Issue Tracker (Gunicorn WSGI)
+After=network.target
+
+[Service]
+Type=notify
+User=antidote
+Group=www-data
+WorkingDirectory=/var/www/antidote/app
+RuntimeDirectory=antidote
+ExecStart=/var/www/antidote/venv/bin/gunicorn \
+    --workers 2 \
+    --threads 2 \
+    --worker-class gthread \
+    --worker-tmp-dir /dev/shm \
+    --bind unix:/run/antidote/gunicorn.sock \
+    --timeout 30 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
+    --access-logfile /var/log/antidote/access.log \
+    --error-logfile /var/log/antidote/error.log \
+    config.wsgi:application
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=10
+PrivateTmp=true
+Restart=always
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
