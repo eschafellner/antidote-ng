@@ -271,6 +271,6 @@ class GlobalAdminProjectMultiTenancyTests(TestCase):
         res1 = self.client.get(f"/projects/{self.project1.slug}/board/")
         self.assertEqual(res1.status_code, 200)
 
-        # Access other project without membership -> 403 Forbidden
+        # Access other project without membership -> 404 Not Found
         res2 = self.client.get(f"/projects/{self.project2.slug}/board/")
-        self.assertEqual(res2.status_code, 403)
+        self.assertEqual(res2.status_code, 404)

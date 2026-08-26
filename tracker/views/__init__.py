@@ -27,6 +27,7 @@ from tracker.views.issues import (
 from tracker.views.attachments import (
     attachment_upload_view,
     attachment_delete_view,
+    attachment_download_view,
 )
 from tracker.views.comments import (
     comment_create_view,
@@ -66,6 +67,7 @@ __all__ = [
     "issue_restore_view",
     "attachment_upload_view",
     "attachment_delete_view",
+    "attachment_download_view",
     "comment_create_view",
     "comment_update_view",
     "comment_delete_view",

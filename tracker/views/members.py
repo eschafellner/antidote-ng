@@ -1,6 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.views.decorators.http import require_http_methods
 import inertia
@@ -11,6 +11,15 @@ from tracker.services.invitations import InvitationService, MembershipService
 from tracker.views.utils import parse_request_data, format_validation_errors
 
 
+def _get_project_for_management(slug: str, user) -> Project:
+    project = get_object_or_404(Project, slug=slug)
+    if not PermissionService.can_view_project(user, project):
+        raise Http404("Project not found.")
+    if not PermissionService.can_manage_project(user, project):
+        raise PermissionDenied("You do not have permission to manage this project.")
+    return project
+
+
 @login_required
 @require_http_methods(["GET"])
 def project_settings_view(request: HttpRequest, slug: str) -> HttpResponse:
@@ -18,9 +27,7 @@ def project_settings_view(request: HttpRequest, slug: str) -> HttpResponse:
     Render the project settings, member management, and invitation overview.
     Accessible only to Project Admins and Owners.
     """
-    project = get_object_or_404(Project, slug=slug)
-    if not PermissionService.can_manage_project(request.user, project):
-        raise PermissionDenied("You do not have permission to access project settings.")
+    project = _get_project_for_management(slug, request.user)
 
     members = MembershipService.get_project_members(project=project, actor=request.user)
     invitations = InvitationService.get_pending_invitations(project=project, actor=request.user)
@@ -52,7 +59,7 @@ def member_role_update_view(request: HttpRequest, slug: str, user_id: int) -> Ht
     """
     Update an existing member's role in the project. Admin only.
     """
-    project = get_object_or_404(Project, slug=slug)
+    project = _get_project_for_management(slug, request.user)
     data = parse_request_data(request)
     new_role = data.get("role", "")
 
@@ -71,7 +78,7 @@ def member_remove_view(request: HttpRequest, slug: str, user_id: int) -> HttpRes
     """
     Remove a member from the project. Admin only.
     """
-    project = get_object_or_404(Project, slug=slug)
+    project = _get_project_for_management(slug, request.user)
     MembershipService.remove_member(
         project=project,
         member_user_id=user_id,
@@ -86,7 +93,7 @@ def invitation_create_view(request: HttpRequest, slug: str) -> HttpResponse:
     """
     Create and record a new invitation for a project. Admin only.
     """
-    project = get_object_or_404(Project, slug=slug)
+    project = _get_project_for_management(slug, request.user)
     data = parse_request_data(request)
     email = data.get("email", "")
     role = data.get("role", ProjectRole.MEMBER)
@@ -130,6 +137,6 @@ def invitation_revoke_view(request: HttpRequest, slug: str, invitation_id: int) 
     """
     Revoke a pending invitation. Admin only.
     """
-    project = get_object_or_404(Project, slug=slug)
+    project = _get_project_for_management(slug, request.user)
     InvitationService.revoke_invitation(invitation_id=invitation_id, actor=request.user)
     return redirect("project_settings", slug=project.slug)

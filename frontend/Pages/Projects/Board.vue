@@ -1,5 +1,5 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Head, router } from '@inertiajs/vue3';
 import draggable from 'vuedraggable';
 import AppLayout from '@/Components/AppLayout.vue';
@@ -34,6 +34,7 @@ watch(
 
 const showCreateModal = ref(false);
 const defaultModalStatus = ref('todo');
+const focusedIssueKey = ref(null);
 
 const openCreateForStatus = status => {
   defaultModalStatus.value = status;
@@ -49,19 +50,28 @@ const columnConfigs = [
   { id: 'canceled', label: 'Canceled', border: 'border-zinc-300', bg: 'bg-zinc-100/40', badge: 'bg-zinc-200 text-zinc-600' },
 ];
 
+const allIssues = computed(() => {
+  const list = [];
+  columnConfigs.forEach(col => {
+    (columns.value[col.id] || []).forEach(item => {
+      list.push(item);
+    });
+  });
+  return list;
+});
+
+const totalIssuesCount = computed(() => allIssues.value.length);
+
 /**
  * Handle Drag and Drop card movement with optimistic UI update and rollback.
  */
 const onCardMove = (targetStatus, evt) => {
-  // We handle 'added' or 'moved' events from vuedraggable
   if (evt.added || evt.moved) {
     const item = evt.added ? evt.added.element : evt.moved.element;
     const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
 
-    // Snapshot current state for rollback if server request fails
     const rollbackSnapshot = JSON.parse(JSON.stringify(columns.value));
 
-    // Asynchronously patch movement on backend
     router.post(
       `/projects/${props.project.slug}/issues/${item.key}/move/`,
       {
@@ -72,13 +82,91 @@ const onCardMove = (targetStatus, evt) => {
         preserveScroll: true,
         preserveState: true,
         onError: () => {
-          // Rollback optimistic state
           columns.value = rollbackSnapshot;
         },
       }
     );
   }
 };
+
+/**
+ * Handle accessible status change (from keyboard or dropdown menu)
+ */
+const handleDirectStatusChange = ({ issue, newStatus }) => {
+  if (issue.status === newStatus) return;
+
+  const rollbackSnapshot = JSON.parse(JSON.stringify(columns.value));
+
+  // Optimistically remove from old column
+  const oldCol = columns.value[issue.status] || [];
+  columns.value[issue.status] = oldCol.filter(i => i.key !== issue.key);
+
+  // Add to new column
+  const updatedIssue = { ...issue, status: newStatus };
+  if (!columns.value[newStatus]) columns.value[newStatus] = [];
+  columns.value[newStatus].push(updatedIssue);
+
+  router.post(
+    `/projects/${props.project.slug}/issues/${issue.key}/move/`,
+    {
+      status: newStatus,
+      position: columns.value[newStatus].length - 1,
+    },
+    {
+      preserveScroll: true,
+      preserveState: true,
+      onError: () => {
+        columns.value = rollbackSnapshot;
+      },
+    }
+  );
+};
+
+// Keyboard Navigation (J / K / Enter / S)
+const handleBoardKeyDown = e => {
+  const target = e.target;
+  const isInput =
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.tagName === 'SELECT' ||
+    target.isContentEditable;
+
+  if (isInput || showCreateModal.value) return;
+
+  const items = allIssues.value;
+  if (!items.length) return;
+
+  const currentIndex = items.findIndex(i => i.key === focusedIssueKey.value);
+
+  if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowDown') {
+    e.preventDefault();
+    const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
+    focusedIssueKey.value = items[nextIndex].key;
+  } else if (e.key === 'k' || e.key === 'K' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
+    focusedIssueKey.value = items[prevIndex].key;
+  } else if (e.key === 'Enter' && focusedIssueKey.value) {
+    e.preventDefault();
+    router.visit(`/projects/${props.project.slug}/issues/${focusedIssueKey.value}/`);
+  } else if ((e.key === 's' || e.key === 'S') && focusedIssueKey.value) {
+    e.preventDefault();
+    const currentItem = items.find(i => i.key === focusedIssueKey.value);
+    if (currentItem) {
+      const statusOrder = ['todo', 'in_progress', 'review', 'done', 'canceled'];
+      const nextStatusIndex = (statusOrder.indexOf(currentItem.status) + 1) % statusOrder.length;
+      handleDirectStatusChange({ issue: currentItem, newStatus: statusOrder[nextStatusIndex] });
+    }
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleBoardKeyDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleBoardKeyDown);
+});
 </script>
 
 <template>
@@ -110,6 +198,33 @@ const onCardMove = (targetStatus, evt) => {
             Add Issue
           </button>
         </div>
+      </div>
+
+      <!-- Board Empty State (when 0 issues across all columns) -->
+      <div
+        v-if="totalIssuesCount === 0"
+        class="mb-6 p-8 bg-white border border-indigo-100 rounded-2xl shadow-xs text-center flex flex-col items-center max-w-xl mx-auto"
+      >
+        <div class="w-12 h-12 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3">
+          <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 class="text-base font-bold text-slate-900 mb-1">Your board is empty</h3>
+        <p class="text-xs text-slate-500 mb-4 max-w-sm">
+          Get started by creating your first issue. Press <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[10px] text-slate-800 font-semibold">C</kbd> anywhere or click below.
+        </p>
+        <button
+          v-if="project.can_create_issue !== false"
+          type="button"
+          class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl shadow-sm hover:bg-indigo-700 transition-colors"
+          @click="openCreateForStatus('todo')"
+        >
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4" />
+          </svg>
+          Create First Issue
+        </button>
       </div>
 
       <!-- Horizontal Scrollable Kanban Columns Container -->
@@ -164,7 +279,12 @@ const onCardMove = (targetStatus, evt) => {
             @change="evt => onCardMove(col.id, evt)"
           >
             <template #item="{ element }">
-              <IssueCard :issue="element" :project-slug="project.slug" />
+              <IssueCard
+                :issue="element"
+                :project-slug="project.slug"
+                :is-focused="focusedIssueKey === element.key"
+                @status-change="handleDirectStatusChange"
+              />
             </template>
 
             <!-- Empty Column State -->

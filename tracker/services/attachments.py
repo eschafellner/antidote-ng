@@ -89,7 +89,7 @@ class AttachmentService:
                 "filename": att.filename,
                 "file_size": att.file_size,
                 "content_type": att.content_type,
-                "url": att.file.url if att.file else "",
+                "url": f"/projects/{issue.project.slug}/issues/{issue.key}/attachments/{att.id}/download/",
                 "uploaded_by": {
                     "id": att.uploaded_by.id,
                     "username": att.uploaded_by.username,

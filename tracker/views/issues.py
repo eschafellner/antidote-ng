@@ -3,7 +3,7 @@ from typing import Optional
 from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.http import HttpRequest, HttpResponse, JsonResponse, Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.views.decorators.http import require_http_methods
 import inertia
@@ -21,7 +21,7 @@ User = get_user_model()
 def _get_project_and_check_access(slug: str, user) -> Project:
     project = get_object_or_404(Project, slug=slug)
     if not PermissionService.can_view_project(user, project):
-        raise PermissionDenied("You do not have access to this project.")
+        raise Http404("Project not found.")
     return project
 
 
@@ -29,7 +29,7 @@ def _get_issue_and_check_access(slug: str, key: str, user) -> Issue:
     project = _get_project_and_check_access(slug, user)
     issue = get_object_or_404(Issue, project=project, key=key)
     if not PermissionService.can_view_issue(user, issue):
-        raise PermissionDenied("You do not have access to this issue.")
+        raise Http404("Issue not found.")
     return issue
 
 

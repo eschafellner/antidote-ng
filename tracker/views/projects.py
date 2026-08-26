@@ -65,7 +65,7 @@ def project_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
     """
     project = get_object_or_404(Project, slug=slug)
     if not PermissionService.can_view_project(request.user, project):
-        raise PermissionDenied("You are not a member of this project.")
+        raise Http404("Project not found.")
 
     role = PermissionService.get_role(request.user, project)
     is_owner = project.owner_id == request.user.id
@@ -96,6 +96,11 @@ def project_update_view(request: HttpRequest, slug: str) -> HttpResponse:
     Update project metadata (name, description). Admin only.
     """
     project = get_object_or_404(Project, slug=slug)
+    if not PermissionService.can_view_project(request.user, project):
+        raise Http404("Project not found.")
+    if not PermissionService.can_manage_project(request.user, project):
+        raise PermissionDenied("You do not have permission to manage this project.")
+
     data = parse_request_data(request)
     name = data.get("name", "")
     description = data.get("description", "")
@@ -119,5 +124,10 @@ def project_delete_view(request: HttpRequest, slug: str) -> HttpResponse:
     Delete a project. Admin/Owner only.
     """
     project = get_object_or_404(Project, slug=slug)
+    if not PermissionService.can_view_project(request.user, project):
+        raise Http404("Project not found.")
+    if not PermissionService.can_manage_project(request.user, project):
+        raise PermissionDenied("You do not have permission to delete this project.")
+
     ProjectService.delete_project(project=project, actor=request.user)
     return redirect("project_list")

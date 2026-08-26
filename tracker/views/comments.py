@@ -1,6 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.http import HttpRequest, HttpResponse
+from django.http import HttpRequest, HttpResponse, Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.views.decorators.http import require_http_methods
 
@@ -14,10 +14,10 @@ from tracker.views.utils import parse_request_data
 def _get_issue_for_request(slug: str, key: str, user) -> Issue:
     project = get_object_or_404(Project, slug=slug)
     if not PermissionService.can_view_project(user, project):
-        raise PermissionDenied("You do not have access to this project.")
+        raise Http404("Project not found.")
     issue = get_object_or_404(Issue, project=project, key=key)
     if not PermissionService.can_view_issue(user, issue):
-        raise PermissionDenied("You do not have access to this issue.")
+        raise Http404("Issue not found.")
     return issue
 
 

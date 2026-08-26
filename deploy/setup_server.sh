@@ -111,11 +111,10 @@ server {
         access_log off;
     }
 
-    location /media/ {
+    # Protected Media Storage (Served only via authenticated Django X-Accel-Redirect)
+    location /protected_media/ {
+        internal;
         alias /var/www/antidote/media/;
-        expires 7d;
-        add_header Cache-Control "public, max-age=604800";
-        access_log off;
     }
 
     location / {

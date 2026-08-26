@@ -68,6 +68,11 @@ urlpatterns = [
         name="attachment_upload",
     ),
     path(
+        "projects/<slug:slug>/issues/<str:key>/attachments/<int:attachment_id>/download/",
+        views.attachment_download_view,
+        name="attachment_download",
+    ),
+    path(
         "projects/<slug:slug>/issues/<str:key>/attachments/<int:attachment_id>/delete/",
         views.attachment_delete_view,
         name="attachment_delete",

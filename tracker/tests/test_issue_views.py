@@ -59,10 +59,10 @@ class IssueViewsTests(TestCase):
         self.assertContains(response, "TRK-1")
 
     def test_kanban_board_view_forbidden_for_outsider(self) -> None:
-        """Verify non-member receives 403 PermissionDenied on board."""
+        """Verify non-member receives 404 Not Found on board (no existence leakage)."""
         self.client.force_login(self.outsider)
         response = self.client.get(reverse("project_board", kwargs={"slug": self.project.slug}))
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)
 
     def test_issue_list_view_with_filtering(self) -> None:
         """Verify table/backlog view with filters across status and text search."""

@@ -81,10 +81,10 @@ class ProjectViewsTests(TestCase):
         self.assertContains(response, "Main Project")
 
     def test_project_detail_view_forbidden_for_outsider(self) -> None:
-        """Verify non-member receives 403 Permission Denied."""
+        """Verify non-member receives 404 Not Found (no existence leakage)."""
         self.client.force_login(self.outsider)
         response = self.client.get(reverse("project_detail", kwargs={"slug": self.project.slug}))
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.status_code, 404)
 
     def test_project_update_view_admin_only(self) -> None:
         """Verify Admin can update project details, while Member is rejected with 403."""

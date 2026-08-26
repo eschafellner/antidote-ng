@@ -35,7 +35,7 @@ flowchart TD
 ```
 
 - **Service-Layer verpflichtend:** Sämtliche Geschäftslogik, Berechtigungsprüfungen, Key-Generierung und Activity-Logging liegen ausschließlich in `tracker/services/`. Views orchestrieren ausschließlich HTTP/Inertia-Requests.
-- **Multi-Tenancy & Isolation:** Jede Query wird strikt nach Projektmitgliedschaft (`ProjectMembership`) oder globalem Admin-Status über `PermissionService` gefiltert. Non-Members erhalten keinen Datenzugriff (HTTP 403/404).
+- **Multi-Tenancy & Isolation:** Jede Query wird strikt nach Projektmitgliedschaft (`ProjectMembership`) oder globalem Admin-Status über `PermissionService` gefiltert. Non-Members erhalten keinen Datenzugriff und ausnahmslos **HTTP 404** zur Verhinderung von Projekt-/Issue-Enumeration.
 - **Sequenzielle Issue-Keys (`PROJ-42`):** Race-Condition-sichere Generierung via `IssueKeyService` mittels `select_for_update()` auf `Project.issue_counter` innerhalb einer atomaren Transaktion mit exponentialem Backoff-Retry.
 - **Soft-Delete für Issues:** Vorgänge werden über `is_deleted` und `deleted_at` audit-sicher deaktiviert und können wiederhergestellt werden.
 - **Activity-Log:** Direkte Erstellung im Service-Layer ohne Django-Signals für transparente Nachvollziehbarkeit.
