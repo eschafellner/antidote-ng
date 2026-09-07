@@ -9,6 +9,10 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
+DOMAIN="${1:-${DOMAIN:-_}}"
+
+echo ">>> Setting up Antidote Issue Tracker (Domain: $DOMAIN)..."
+
 echo ">>> [1/7] Updating system packages..."
 apt update && apt upgrade -y
 apt install -y curl git ufw fail2ban certbot python3-certbot-nginx \
@@ -60,6 +64,7 @@ User=antidote
 Group=www-data
 WorkingDirectory=/var/www/antidote/app
 RuntimeDirectory=antidote
+EnvironmentFile=-/var/www/antidote/app/.env
 ExecStart=/var/www/antidote/venv/bin/gunicorn \
     --workers 2 \
     --threads 2 \
@@ -86,7 +91,7 @@ SERVICE
 systemctl daemon-reload
 
 echo ">>> [6/7] Configuring Nginx..."
-cat << 'NGINX' > /etc/nginx/sites-available/antidote
+cat << NGINX > /etc/nginx/sites-available/antidote
 upstream antidote_app {
     server unix:/run/antidote/gunicorn.sock fail_timeout=0;
 }
@@ -94,7 +99,7 @@ upstream antidote_app {
 server {
     listen 80;
     listen [::]:80;
-    server_name _;
+    server_name $DOMAIN;
 
     client_max_body_size 15M;
 
@@ -120,10 +125,10 @@ server {
     location / {
         proxy_pass http://antidote_app;
         proxy_http_version 1.1;
-        proxy_set_header Host $http_host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Host \$http_host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_redirect off;
         proxy_read_timeout 60s;
         proxy_connect_timeout 10s;
@@ -141,13 +146,18 @@ ufw allow OpenSSH || true
 ufw allow 'Nginx Full' || true
 ufw --force enable || true
 
+CERT_CMD="sudo certbot --nginx -d YOUR_DOMAIN.com"
+if [[ "$DOMAIN" != "_" ]]; then
+    CERT_CMD="sudo certbot --nginx -d $DOMAIN"
+fi
+
 echo "===================================================================="
 echo ">>> Server setup completed successfully!"
 echo "Next steps:"
 echo "1. Clone your repo into /var/www/antidote/app:"
 echo "   sudo -u antidote git clone <YOUR_GIT_URL> /var/www/antidote/app"
-echo "2. Create /var/www/antidote/app/.env with DEBUG=False & SECRET_KEY"
-echo "3. Run deployment script: bash /var/www/antidote/app/deploy.sh"
+echo "2. Create /var/www/antidote/app/.env with DEBUG=False, SECRET_KEY and ALLOWED_HOSTS"
+echo "3. Run deployment script: sudo bash /var/www/antidote/app/deploy.sh"
 echo "4. Obtain SSL certificate:"
-echo "   sudo certbot --nginx -d YOUR_DOMAIN.com"
+echo "   $CERT_CMD"
 echo "===================================================================="

@@ -41,8 +41,18 @@ echo ">>> [4/6] Collecting static files..."
 echo ">>> [5/6] Running database migrations..."
 "$VENV_DIR/bin/python" manage.py migrate --noinput
 
-if [ -f "$DATA_DIR/db.sqlite3" ]; then
-    sqlite3 "$DATA_DIR/db.sqlite3" "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;" || true
+DB_PATH="$DATA_DIR/db.sqlite3"
+if [ ! -f "$DB_PATH" ] && [ -f "$APP_DIR/db.sqlite3" ]; then
+    DB_PATH="$APP_DIR/db.sqlite3"
+fi
+if [ -f "$DB_PATH" ]; then
+    sqlite3 "$DB_PATH" "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL; PRAGMA busy_timeout=5000;" || true
+fi
+
+# Ensure ownership if run as root
+if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+    chown -R antidote:www-data "$APP_DIR" "$DATA_DIR" /var/www/antidote/staticfiles /var/www/antidote/media 2>/dev/null || true
+    chmod -R 775 "$DATA_DIR" /var/www/antidote/media 2>/dev/null || true
 fi
 
 # 6. Graceful reload of Gunicorn WSGI workers

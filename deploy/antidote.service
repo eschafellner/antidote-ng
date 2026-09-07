@@ -8,6 +8,7 @@ User=antidote
 Group=www-data
 WorkingDirectory=/var/www/antidote/app
 RuntimeDirectory=antidote
+EnvironmentFile=-/var/www/antidote/app/.env
 ExecStart=/var/www/antidote/venv/bin/gunicorn \
     --workers 2 \
     --threads 2 \

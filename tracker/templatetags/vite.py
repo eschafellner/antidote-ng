@@ -11,8 +11,19 @@ register = template.Library()
 def vite_asset(entry_name: str = "frontend/main.js") -> str:
     """
     Renders script and stylesheet tags for the given Vite entrypoint.
-    Reads manifest.json from static/dist/ in production or built mode.
+    - If VITE_DEV_MODE is True (local frontend development), connects to Vite HMR dev server.
+    - Otherwise, loads production pre-bundled assets from static/dist/manifest.json.
     """
+    vite_dev_mode = getattr(settings, "VITE_DEV_MODE", False)
+
+    if vite_dev_mode:
+        return mark_safe(
+            f"""
+            <script type="module" src="http://localhost:5173/@vite/client"></script>
+            <script type="module" src="http://localhost:5173/{entry_name}"></script>
+            """
+        )
+
     manifest_path = settings.BASE_DIR / "static" / "dist" / "manifest.json"
 
     if manifest_path.exists():
@@ -39,10 +50,13 @@ def vite_asset(entry_name: str = "frontend/main.js") -> str:
         except Exception:
             pass
 
-    # Fallback to local dev server
-    return mark_safe(
-        f"""
-        <script type="module" src="http://localhost:5173/@vite/client"></script>
-        <script type="module" src="http://localhost:5173/{entry_name}"></script>
-        """
-    )
+    # Fallback to local dev server if manifest is missing and in DEBUG mode
+    if settings.DEBUG:
+        return mark_safe(
+            f"""
+            <script type="module" src="http://localhost:5173/@vite/client"></script>
+            <script type="module" src="http://localhost:5173/{entry_name}"></script>
+            """
+        )
+
+    return mark_safe("<!-- Vite manifest not found. Run 'npm run build' to generate frontend assets. -->")

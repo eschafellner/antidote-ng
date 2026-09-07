@@ -7,10 +7,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 env = environ.Env(
     DEBUG=(bool, True),
     SECRET_KEY=(str, "django-insecure-dev-key-change-in-production-1234567890"),
-    ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost", "testserver"]),
-    CSRF_TRUSTED_ORIGINS=(list, []),
+    ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost", "testserver", ".trycloudflare.com"]),
+    CSRF_TRUSTED_ORIGINS=(list, ["http://127.0.0.1:8000", "http://localhost:8000", "https://*.trycloudflare.com"]),
+    USE_X_ACCEL_REDIRECT=(bool, False),
+    VITE_DEV_MODE=(bool, False),
 )
-
 
 environ.Env.read_env(BASE_DIR / ".env")
 
@@ -18,6 +19,8 @@ SECRET_KEY = env("SECRET_KEY")
 DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 CSRF_TRUSTED_ORIGINS = env("CSRF_TRUSTED_ORIGINS")
+USE_X_ACCEL_REDIRECT = env("USE_X_ACCEL_REDIRECT")
+VITE_DEV_MODE = env("VITE_DEV_MODE")
 
 # Application definition
 INSTALLED_APPS = [
@@ -110,14 +113,14 @@ USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(env("STATIC_ROOT", default=str(BASE_DIR / "staticfiles")))
 STATICFILES_DIRS = [
     BASE_DIR / "static",
 ]
 
 # Media files (Uploads)
 MEDIA_URL = "media/"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -131,12 +134,15 @@ ALLOWED_ATTACHMENT_EXTENSIONS = [
     "png", "jpg", "jpeg", "gif", "webp", "svg",
 ]
 
+# Reverse Proxy SSL Header (Nginx, Cloudflare Tunnel, Caddy)
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 # Production Security Settings
 if not DEBUG:
-    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_CONTENT_TYPE_NOSNIFF = True
     X_FRAME_OPTIONS = "DENY"
+
 
