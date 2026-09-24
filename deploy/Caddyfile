@@ -1,0 +1,16 @@
+{$DOMAIN} {
+	encode zstd gzip
+
+	request_body {
+		max_size 16MB
+	}
+
+	handle_path /static/* {
+		root * /srv/staticfiles
+		file_server
+	}
+
+	handle {
+		reverse_proxy app:8000
+	}
+}

@@ -1,0 +1,10 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?TUNNEL_TOKEN in deploy/docker.env setzen}
+    depends_on:
+      app:
+        condition: service_healthy

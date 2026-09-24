@@ -24,6 +24,10 @@ Teile eine lokale Testinstanz per HTTPS. Installiere zuvor `cloudflared`, richte
 ```
 
 ### 3. Produktions-Deployment auf eigenem Linux-VPS (mit HTTPS)
-Produktions-Infrastruktur mit Nginx, Gunicorn, systemd und Let's Encrypt SSL. Auf dem VPS sind nacheinander erforderlich: Git installieren und Repository klonen, `deploy/setup_server.sh` ausführen, `.env` anlegen, `deploy.sh` starten und HTTPS mit Certbot aktivieren. Die genauen Befehle und die Reihenfolge stehen im Guide.
+**Empfohlen für neue Installationen:** Docker Compose baut die App, startet Gunicorn und Caddy und verwaltet HTTPS sowie persistente Volumes für Datenbank und Uploads. Die Einrichtung und Update-Befehle stehen im [Deployment-Guide](DEPLOYMENT_GUIDE.md#empfohlen-docker-compose).
+
+Für Domains bei Cloudflare gibt es alternativ [Docker Compose mit Cloudflare Tunnel](DEPLOYMENT_GUIDE.md#docker-compose-mit-cloudflare-tunnel). Dabei verbindet ein `cloudflared`-Container die App ohne öffentliche Server-Ports mit Cloudflare.
+
+Das bisherige manuelle Setup mit Nginx, systemd und Certbot ist dort ebenfalls beschrieben. Bestehende Installationen benötigen für einen Wechsel zu Docker eine gesonderte Datenmigration.
 
 Details siehe **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**.

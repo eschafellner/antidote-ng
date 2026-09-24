@@ -47,6 +47,7 @@ static/dist/
 .env
 .env.local
 .env.*.local
+deploy/docker.env
 
 # IDE & Editor
 .vscode/

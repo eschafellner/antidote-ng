@@ -16,7 +16,9 @@ Dieses Dokument erklärt Schritt für Schritt, wie **Antidote** betrieben und be
    - [Schritt 2: Tunnel starten](#schritt-2-tunnel-starten)
    - [Schritt 3: Fachlichen Ablauf live testen](#schritt-3-fachlichen-ablauf-live-testen)
 4. [Weg 3: Eigener Linux-VPS mit echter Domain & HTTPS](#4-weg-3-eigener-linux-vps-mit-echter-domain--https)
-   - [Voraussetzungen](#voraussetzungen)
+   - [Empfohlen: Docker Compose](#empfohlen-docker-compose)
+   - [Docker Compose mit Cloudflare Tunnel](#docker-compose-mit-cloudflare-tunnel)
+   - [Alternative: Manuelles Setup ohne Docker](#alternative-manuelles-setup-ohne-docker)
    - [Schritt 1: Server vorbereiten (One-Shot Setup)](#schritt-1-server-vorbereiten-one-shot-setup)
    - [Schritt 2: Repository und Setup prüfen](#schritt-2-repository-und-setup-prüfen)
    - [Schritt 3: `.env` Datei anlegen](#schritt-3-env-datei-anlegen)
@@ -164,7 +166,80 @@ Kopiere die angezeigte `https://...trycloudflare.com` URL und öffne sie in dein
 
 ## 4. Weg 3: Eigener Linux-VPS mit echter Domain & HTTPS
 
-Für den dauerhaften Betrieb im Produktivmodus empfehlen wir einen günstigen Linux-VPS (z. B. Hetzner Cloud CX22 ab ~4 €/Monat oder GCP e2-micro / Ubuntu 24.04 oder 26.04).
+Für den dauerhaften Betrieb auf einem Linux-VPS gibt es zwei Wege. **Docker Compose ist der einfachere Weg für eine neue Installation.** Das bisherige manuelle Setup bleibt als Alternative erhalten.
+
+### Empfohlen: Docker Compose
+
+Dieser Weg startet zwei Container: Django mit Gunicorn und Caddy als HTTPS-Reverse-Proxy. Das Frontend wird beim Image-Build gebaut; Migrationen und `collectstatic` laufen beim Start des App-Containers. SQLite-Daten, Uploads, statische Dateien und Caddy-Zertifikate liegen auf benannten Docker-Volumes und überstehen Container-Neustarts. Geschützte Anhänge werden nach dem Django-Berechtigungscheck durch die App ausgeliefert.
+
+**Voraussetzungen:** Ein VPS mit öffentlicher Domain, deren DNS-A-Record auf den Server zeigt; Ports 80 und 443 müssen erreichbar und frei sein. Installiere [Docker Engine samt Compose-Plugin nach der offiziellen Ubuntu-Anleitung](https://docs.docker.com/engine/install/ubuntu/). Auf diesem Weg werden Nginx, Certbot, Node.js und Python **nicht** auf dem VPS installiert. Caddy beschafft und erneuert das HTTPS-Zertifikat automatisch.
+
+1. Verbinde dich mit dem VPS und klone das Repository:
+   ```bash
+   ssh root@DEINE_SERVER_IP
+   apt update && apt install -y git
+   git clone https://github.com/eschafellner/antidote-ng.git /opt/antidote-ng
+   cd /opt/antidote-ng
+   ```
+   Ersetze die Repository-URL, falls du einen eigenen Fork verwendest.
+2. Lege die Docker-Konfiguration an:
+   ```bash
+   cp deploy/docker.env.example deploy/docker.env
+   python3 -c 'import secrets; print(secrets.token_urlsafe(64))'
+   nano deploy/docker.env
+   chmod 600 deploy/docker.env
+   ```
+   Setze `DOMAIN` auf deinen echten Hostnamen und ersetze `SECRET_KEY` durch die erzeugte Zeichenfolge. Verwende keine Beispielwerte. `deploy/docker.env` wird nicht eingecheckt.
+3. Prüfe die Konfiguration und starte die Container:
+   ```bash
+   docker compose --env-file deploy/docker.env config --quiet
+   docker compose --env-file deploy/docker.env up -d --build
+   docker compose --env-file deploy/docker.env ps
+   ```
+   Warte, bis `app` als `healthy` angezeigt wird. Caddy startet danach. Öffne `https://DEINE_DOMAIN` erst, wenn DNS und HTTPS bereit sind.
+4. Lege den ersten Admin an:
+   ```bash
+   docker compose --env-file deploy/docker.env exec app python manage.py createsuperuser
+   ```
+   Verwende auf diesem Server **nicht** `seed_demo_data`; der Befehl erzeugt Konten mit bekannten Passwörtern.
+
+**Updates** werden im Repository-Verzeichnis ausgeführt:
+```bash
+git pull --ff-only
+docker compose --env-file deploy/docker.env up -d --build
+docker compose --env-file deploy/docker.env ps
+```
+Für Logs: `docker compose --env-file deploy/docker.env logs -f app caddy`. Der App-Container führt beim Neustart Migrationen aus; bei nicht kompatiblen Datenbankänderungen ist eine Wartungszeit möglich. Sichere regelmäßig das `data`-Volume (SQLite) und das `media`-Volume (Uploads). Verwende bei laufender SQLite-Datenbank die SQLite-Backup-API statt einer einfachen Dateikopie. `docker compose down --volumes` löscht die Datenvolumes und ist kein Update-Befehl.
+
+**Bestehende Installation:** Dieser Weg übernimmt weder die Datenbank noch Uploads aus `/var/www/antidote/` automatisch. Stoppe einen vorhandenen Nginx-Dienst vor dem Docker-Start, da er sonst die Ports 80/443 belegt. Plane eine gesonderte Datenmigration mit Backup, bevor du umstellst.
+
+### Docker Compose mit Cloudflare Tunnel
+
+Wenn deine Domain über Cloudflare verwaltet wird, kannst du Antidote stattdessen über einen **verwalteten Cloudflare Tunnel** bereitstellen. Dabei laufen `app` und `cloudflared` als zwei Container im selben Compose-Netzwerk. Die App hat keine öffentlich freigegebenen Ports; für diesen Weg brauchst du weder Caddy noch offene Ports 80/443 oder einen DNS-A-Record auf die Server-IP. Die Verbindung vom Browser zu Cloudflare nutzt HTTPS. Die statischen Dateien liefert WhiteNoise aus dem App-Container aus.
+
+1. Richte `deploy/docker.env` wie oben beschrieben ein. `DOMAIN` muss genau dem späteren öffentlichen Hostnamen entsprechen, beispielsweise `antidote.example.com`. Lege in der [Cloudflare-Oberfläche einen verwalteten Tunnel](https://developers.cloudflare.com/tunnel/get-started/) an und kopiere dessen **Token** (nur die Zeichenfolge, nicht den angezeigten Docker-Befehl) in eine zusätzliche Zeile der Datei:
+   ```text
+   TUNNEL_TOKEN=DEIN_TUNNEL_TOKEN
+   ```
+   Halte diese Datei privat (`chmod 600 deploy/docker.env`). Wer den Token besitzt, kann den Tunnel starten.
+2. Erstelle im Cloudflare-Tunnel eine Route vom öffentlichen Hostnamen `DOMAIN` zur **Service URL `http://app:8000`**. `app` ist der Compose-Dienstname. `localhost` würde aus Sicht des `cloudflared`-Containers auf diesen Container selbst zeigen.
+3. Starte nur die beiden benötigten Dienste:
+   ```bash
+   docker compose -f compose.yaml -f compose.tunnel.yaml --env-file deploy/docker.env config --quiet
+   docker compose -f compose.yaml -f compose.tunnel.yaml --env-file deploy/docker.env up -d --build app cloudflared
+   docker compose -f compose.yaml -f compose.tunnel.yaml --env-file deploy/docker.env ps
+   ```
+   Falls zuvor Caddy mit derselben Compose-Installation gestartet wurde, stoppe ihn mit `docker compose --env-file deploy/docker.env stop caddy`. Danach ist Antidote unter `https://DEINE_DOMAIN` erreichbar. Prüfe bei Problemen die Logs mit `docker compose -f compose.yaml -f compose.tunnel.yaml --env-file deploy/docker.env logs -f app cloudflared`.
+4. Lege den ersten Admin an:
+   ```bash
+   docker compose -f compose.yaml -f compose.tunnel.yaml --env-file deploy/docker.env exec app python manage.py createsuperuser
+   ```
+
+Für Updates nutze `git pull --ff-only` und danach erneut den `up -d --build app cloudflared`-Befehl aus Schritt 3. Die benannten Volumes für Datenbank und Uploads bleiben erhalten. Sichere sie wie im Abschnitt oben beschrieben. Ein Cloudflare Quick Tunnel mit zufälliger Adresse ist für diesen festen `DOMAIN`-Weg nicht vorgesehen; dafür gibt es weiterhin [Weg 2](#3-weg-2-sofort-online-via-cloudflare-tunnel-ohne-serverkauf).
+
+### Alternative: Manuelles Setup ohne Docker
+
+Das folgende Setup verwendet Nginx, Gunicorn, systemd und Certbot direkt auf dem VPS.
 
 ### Architektur auf dem Server
 - **Nginx:** Hört auf Port 80 & 443 (HTTPS), liefert CSS/JS/Bilder blitzschnell direkt aus und leitet App-Anfragen per Unix-Socket an Gunicorn weiter.

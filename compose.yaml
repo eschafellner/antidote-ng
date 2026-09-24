@@ -1,0 +1,50 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    init: true
+    environment:
+      DEBUG: "False"
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY in deploy/docker.env setzen}
+      ALLOWED_HOSTS: ${DOMAIN:?DOMAIN in deploy/docker.env setzen},localhost,127.0.0.1
+      CSRF_TRUSTED_ORIGINS: https://${DOMAIN:?DOMAIN in deploy/docker.env setzen}
+      DATABASE_URL: sqlite:////app/data/db.sqlite3
+      STATIC_ROOT: /app/staticfiles
+      MEDIA_ROOT: /app/media
+      USE_X_ACCEL_REDIRECT: "False"
+      MAX_ATTACHMENT_SIZE_BYTES: ${MAX_ATTACHMENT_SIZE_BYTES:-15728640}
+    volumes:
+      - data:/app/data
+      - media:/app/media
+      - staticfiles:/app/staticfiles
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/login/', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.caddy
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN in deploy/docker.env setzen}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - staticfiles:/srv/staticfiles:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+
+volumes:
+  data:
+  media:
+  staticfiles:
+  caddy_data:
+  caddy_config:
