@@ -1,5 +1,6 @@
 from datetime import timedelta
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase, Client
 from django.urls import reverse
 from django.utils import timezone
@@ -11,6 +12,7 @@ from tracker.models import (
     ProjectRole,
     InvitationStatus,
 )
+from tracker.services.invitations import InvitationService
 
 User = get_user_model()
 
@@ -128,6 +130,33 @@ class InvitationAndMemberViewsTests(TestCase):
         )
         invite.refresh_from_db()
         self.assertEqual(invite.status, InvitationStatus.ACCEPTED)
+
+    def test_invitation_rejects_different_account_email(self) -> None:
+        """A valid token cannot grant membership to another account."""
+        invite = ProjectInvitation.objects.create(
+            project=self.project,
+            email="invited@example.com",
+            role=ProjectRole.MEMBER,
+            invited_by=self.owner,
+        )
+        with self.assertRaises(ValidationError):
+            InvitationService.accept_invitation(invite.token, self.outsider)
+        self.assertFalse(ProjectMembership.objects.filter(project=self.project, user=self.outsider).exists())
+        invite.refresh_from_db()
+        self.assertEqual(invite.status, InvitationStatus.PENDING)
+
+        self.client.force_login(self.outsider)
+        mismatch_response = self.client.get(reverse("invitation_accept", kwargs={"token": invite.token}))
+        self.assertEqual(mismatch_response.status_code, 200)
+        self.assertContains(mismatch_response, "Sign out")
+        self.client.logout()
+
+        response = self.client.post(
+            reverse("register"),
+            {"username": "wrong_email", "email": "wrong@example.com", "password": "Strong-pass-123!", "token": invite.token},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(User.objects.filter(username="wrong_email").exists())
 
     def test_invitation_accept_unauthenticated_visitor(self) -> None:
         """Verify unauthenticated visitor sees the invite acceptance landing screen."""

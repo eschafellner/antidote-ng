@@ -31,6 +31,16 @@ class InvitationService:
         return ProjectInvitation.objects.select_related("project", "invited_by").filter(token=token).first()
 
     @classmethod
+    def validate_invitation_for_email(cls, token: str, email: str) -> ProjectInvitation:
+        """Prüft Gültigkeit und E-Mail-Adresse vor der Registrierung."""
+        invitation = cls.get_invitation_by_token(token)
+        if not invitation or not invitation.is_valid:
+            raise ValidationError({"token": "This invitation link is invalid or has expired."})
+        if email.strip().casefold() != invitation.email.strip().casefold():
+            raise ValidationError({"email": "Use the invited email address."})
+        return invitation
+
+    @classmethod
     def create_invitation(
         cls,
         project: Project,
@@ -89,12 +99,14 @@ class InvitationService:
         if not user or not user.is_authenticated:
             raise PermissionDenied("You must be logged in to accept an invitation.")
 
-        invitation = cls.get_invitation_by_token(token)
-        if not invitation or not invitation.is_valid:
-            raise ValidationError({"token": "This invitation link is invalid or has expired."})
-
         with transaction.atomic():
-            membership, _ = ProjectMembership.objects.update_or_create(
+            invitation = ProjectInvitation.objects.select_for_update().filter(token=token).first()
+            if not invitation or not invitation.is_valid:
+                raise ValidationError({"token": "This invitation link is invalid or has expired."})
+            if user.email.strip().casefold() != invitation.email.strip().casefold():
+                raise ValidationError({"email": "Sign out, then sign in with the invited email address and reopen this link."})
+
+            membership, _ = ProjectMembership.objects.get_or_create(
                 project=invitation.project,
                 user=user,
                 defaults={"role": invitation.role},

@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Optional
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AbstractBaseUser
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpRequest, HttpResponse, JsonResponse, Http404
@@ -16,6 +17,12 @@ from tracker.services.invitations import MembershipService
 from tracker.views.utils import parse_request_data, format_validation_errors
 
 User = get_user_model()
+
+
+def _get_project_assignee(raw_assignee: object, project: Project) -> AbstractBaseUser:
+    if not str(raw_assignee).isdigit():
+        raise Http404("Assignee not found in project.")
+    return get_object_or_404(User, pk=raw_assignee, project_memberships__project=project)
 
 
 def _get_project_and_check_access(slug: str, user) -> Project:
@@ -135,7 +142,7 @@ def issue_create_view(request: HttpRequest, slug: str) -> HttpResponse:
     raw_assignee = data.get("assignee_id")
     assignee = None
     if raw_assignee:
-        assignee = User.objects.filter(id=raw_assignee).first()
+        assignee = _get_project_assignee(raw_assignee, project)
 
     raw_due_date = data.get("due_date")
     due_date = None
@@ -202,7 +209,7 @@ def issue_update_view(request: HttpRequest, slug: str, key: str) -> HttpResponse
     if "assignee_id" in data:
         raw_assignee = data.get("assignee_id")
         update_kwargs["assignee"] = (
-            User.objects.filter(id=raw_assignee).first() if raw_assignee else None
+            _get_project_assignee(raw_assignee, issue.project) if raw_assignee else None
         )
 
     if "due_date" in data:

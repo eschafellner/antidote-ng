@@ -170,6 +170,24 @@ class IssueViewsTests(TestCase):
             ActivityLog.objects.filter(issue=self.issue, action=ActivityAction.STATUS_CHANGED).exists()
         )
 
+    def test_foreign_assignee_is_rejected(self) -> None:
+        """Issue endpoints must not reference a user outside the project."""
+        self.client.force_login(self.member)
+        create_response = self.client.post(
+            reverse("issue_create", kwargs={"slug": self.project.slug}),
+            {"title": "Foreign assignment", "assignee_id": self.outsider.id},
+        )
+        self.assertEqual(create_response.status_code, 404)
+        self.assertFalse(Issue.objects.filter(title="Foreign assignment").exists())
+
+        update_response = self.client.post(
+            reverse("issue_update", kwargs={"slug": self.project.slug, "key": self.issue.key}),
+            {"assignee_id": self.outsider.id},
+        )
+        self.assertEqual(update_response.status_code, 404)
+        self.issue.refresh_from_db()
+        self.assertIsNone(self.issue.assignee)
+
     def test_issue_move_view(self) -> None:
         """Verify drag-and-drop movement changes status and column position."""
         self.client.force_login(self.member)
@@ -190,10 +208,15 @@ class IssueViewsTests(TestCase):
         """Verify soft deletion hides issue from active lists and restore un-deletes it."""
         self.client.force_login(self.member)
 
+        delete_url = reverse("issue_delete", kwargs={"slug": self.project.slug, "key": self.issue.key})
+        self.assertEqual(self.client.post(delete_url).status_code, 403)
+        self.issue.refresh_from_db()
+        self.assertFalse(self.issue.is_deleted)
+
+        self.client.force_login(self.owner)
+
         # Soft delete
-        response = self.client.post(
-            reverse("issue_delete", kwargs={"slug": self.project.slug, "key": self.issue.key})
-        )
+        response = self.client.post(delete_url)
         self.assertRedirects(response, reverse("project_board", kwargs={"slug": self.project.slug}))
         self.issue.refresh_from_db()
         self.assertTrue(self.issue.is_deleted)

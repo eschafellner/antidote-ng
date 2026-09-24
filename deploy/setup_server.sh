@@ -35,7 +35,7 @@ SYSCTL
 sysctl --system
 
 echo ">>> [3/7] Installing Node.js LTS (v22)..."
-if ! command -v node &> /dev/null; then
+if ! command -v node &> /dev/null || [[ "$(node --version | cut -d. -f1 | tr -d v)" -lt 22 ]]; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
     apt install -y nodejs
 fi
@@ -101,7 +101,7 @@ server {
     listen [::]:80;
     server_name $DOMAIN;
 
-    client_max_body_size 15M;
+    client_max_body_size 16M;
 
     gzip on;
     gzip_vary on;

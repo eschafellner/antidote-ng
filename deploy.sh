@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Antidote Issue Tracker - Zero-Downtime Deployment & Update Script
+# Antidote Issue Tracker - Deployment & Update Script
 # ==============================================================================
 set -euo pipefail
 
@@ -17,7 +17,11 @@ cd "$APP_DIR"
 # 1. Pull latest changes if git repo is present
 if [ -d ".git" ]; then
     echo ">>> [1/6] Pulling latest git commits..."
-    git pull origin main || git pull || echo "Git pull skipped or failed, continuing..."
+    if [ "${EUID:-$(id -u)}" -eq 0 ]; then
+        runuser -u antidote -- git -C "$APP_DIR" pull --ff-only
+    else
+        git pull --ff-only
+    fi
 fi
 
 # 2. Virtual Environment & Python dependencies

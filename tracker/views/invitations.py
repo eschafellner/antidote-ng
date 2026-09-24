@@ -28,10 +28,11 @@ def invitation_accept_view(request: HttpRequest, token: str) -> HttpResponse:
             membership = InvitationService.accept_invitation(token=token, user=request.user)
             return redirect("project_detail", slug=membership.project.slug)
         except ValidationError as exc:
+            errors = format_validation_errors(exc)
             return inertia.render(
                 request,
                 "Auth/InviteExpired",
-                props={"error": format_validation_errors(exc).get("non_field_errors", "Could not accept invite.")},
+                props={"error": " ".join(errors.values()), "signed_in": "email" in errors},
             )
 
     # Unauthenticated visitor landing on invite link

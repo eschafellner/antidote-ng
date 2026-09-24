@@ -37,22 +37,26 @@ if ! command -v cloudflared &> /dev/null; then
     exit 1
 fi
 
-# 2. Prüfe Python-Umgebung
-PYTHON_BIN="python3"
-if [ -d ".venv" ]; then
-    PYTHON_BIN=".venv/bin/python"
-elif command -v python &> /dev/null; then
-    PYTHON_BIN="python"
+# 2. Lokale Umgebung prüfen
+if [ ! -x ".venv/bin/python" ]; then
+    echo "[!] Python-Umgebung fehlt. Installiere zuerst die lokalen Abhängigkeiten (siehe DEPLOYMENT_GUIDE.md)." >&2
+    exit 1
 fi
+PYTHON_BIN=".venv/bin/python"
+
+# Der öffentliche Test läuft mit eigenem Sitzungsschlüssel und sicheren Cookies.
+export DEBUG=False
+export SECRET_KEY
+SECRET_KEY="$("$PYTHON_BIN" -c 'import secrets; print(secrets.token_urlsafe(64))')"
+export ALLOWED_HOSTS=".trycloudflare.com,127.0.0.1,localhost"
+export CSRF_TRUSTED_ORIGINS="https://*.trycloudflare.com"
+export USE_X_ACCEL_REDIRECT=False
+export VITE_DEV_MODE=False
 
 # 3. Prüfe und baue Frontend-Assets
 if [ ! -f "static/dist/manifest.json" ]; then
     echo ">>> [1/4] Baue Frontend-Assets (Vite)..."
-    if command -v npm &> /dev/null; then
-        npm run build
-    else
-        echo "[!] npm wurde nicht gefunden. Bitte führe 'npm run build' aus!"
-    fi
+    npm run build
 else
     echo ">>> [1/4] Frontend-Assets sind bereits gebaut (static/dist/ vorhanden)."
 fi
@@ -60,6 +64,12 @@ fi
 # 4. Datenbankmigrationen prüfen
 echo ">>> [2/4] Führe Datenbankmigrationen aus..."
 "$PYTHON_BIN" manage.py migrate --noinput
+
+# Demokonten haben bekannte Passwörter und dürfen nicht veröffentlicht werden.
+if ! "$PYTHON_BIN" manage.py shell -c 'from django.contrib.auth import get_user_model; import sys; users=get_user_model().objects; defaults={"admin":"admin123","developer":"password123","viewer":"password123"}; sys.exit(1 if any((u := users.filter(username=name).first()) and u.check_password(password) for name,password in defaults.items()) else 0)'; then
+    echo "[!] Mindestens ein Demokonto hat noch sein bekanntes Passwort. Ändere diese Passwörter vor dem Tunnel-Start." >&2
+    exit 1
+fi
 
 # 5. Statische Dateien sammeln
 echo ">>> [3/4] Sammle statische Dateien..."
@@ -69,14 +79,13 @@ echo ">>> [3/4] Sammle statische Dateien..."
 PORT="${PORT:-8000}"
 echo ">>> [4/4] Starte lokalen Django-Server auf Port $PORT..."
 
-# Prüfe, ob Port belegt ist
-if lsof -Pi :"$PORT" -sTCP:LISTEN -t >/dev/null 2>&1 ; then
-    echo ">>> Hinweis: Auf Port $PORT läuft bereits ein Prozess. Nutze vorhandenen Server."
-    SERVER_PID=""
-else
-    "$PYTHON_BIN" manage.py runserver --insecure "127.0.0.1:$PORT" &
-    SERVER_PID=$!
+# Ein fremder Prozess auf dem Port darf nicht versehentlich veröffentlicht werden.
+if "$PYTHON_BIN" -c 'import socket,sys; s=socket.socket(); result=s.connect_ex(("127.0.0.1", int(sys.argv[1]))); s.close(); sys.exit(0 if result == 0 else 1)' "$PORT"; then
+    echo "[!] Port $PORT ist bereits belegt. Beende den Prozess oder wähle einen anderen PORT." >&2
+    exit 1
 fi
+"$PYTHON_BIN" manage.py runserver --insecure --noreload "127.0.0.1:$PORT" &
+SERVER_PID=$!
 
 cleanup() {
     echo ""
@@ -84,12 +93,17 @@ cleanup() {
     if [ -n "${SERVER_PID:-}" ]; then
         kill "$SERVER_PID" 2>/dev/null || true
     fi
-    exit 0
 }
-trap cleanup SIGINT SIGTERM EXIT
+trap cleanup EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
 
 # Warte kurz, bis Django bereit ist
 sleep 2
+if ! kill -0 "$SERVER_PID" 2>/dev/null; then
+    echo "[!] Django konnte nicht gestartet werden; Tunnel wird nicht geöffnet." >&2
+    exit 1
+fi
 
 echo ""
 echo "===================================================================="

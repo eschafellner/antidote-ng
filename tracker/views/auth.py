@@ -83,6 +83,8 @@ def register_view(request: HttpRequest) -> HttpResponse:
     invite_token = data.get("token", "") or token
 
     try:
+        if invite_token:
+            InvitationService.validate_invitation_for_email(invite_token, email)
         user = AuthService.register_user(
             username=username,
             email=email,
@@ -95,11 +97,8 @@ def register_view(request: HttpRequest) -> HttpResponse:
 
         # If registering through an invitation token, auto-accept it
         if invite_token:
-            try:
-                membership = InvitationService.accept_invitation(invite_token, user)
-                return redirect("project_detail", slug=membership.project.slug)
-            except (ValidationError, Exception):
-                pass  # Fall back to projects list
+            membership = InvitationService.accept_invitation(invite_token, user)
+            return redirect("project_detail", slug=membership.project.slug)
 
         return redirect("project_list")
     except ValidationError as exc:

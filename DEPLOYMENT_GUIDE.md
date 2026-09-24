@@ -1,4 +1,4 @@
-# Antidote – Der ultimative Deployment- & Betriebsguide
+# Antidote – Deployment und Betrieb
 
 Dieses Dokument erklärt Schritt für Schritt, wie **Antidote** betrieben und bereitgestellt werden kann. Es richtet sich sowohl an Entwickler als auch an Einsteiger mit wenig IT-Erfahrung.
 
@@ -13,13 +13,12 @@ Dieses Dokument erklärt Schritt für Schritt, wie **Antidote** betrieben und be
 3. [Weg 2: Sofort online via Cloudflare Tunnel (Ohne Serverkauf)](#3-weg-2-sofort-online-via-cloudflare-tunnel-ohne-serverkauf)
    - [Warum Cloudflare Tunnel?](#warum-cloudflare-tunnel)
    - [Schritt 1: `cloudflared` installieren](#schritt-1-cloudflared-installieren)
-   - [Schritt 2: Tunnel mit 1 Klick starten](#schritt-2-tunnel-mit-1-klick-starten)
+   - [Schritt 2: Tunnel starten](#schritt-2-tunnel-starten)
    - [Schritt 3: Fachlichen Ablauf live testen](#schritt-3-fachlichen-ablauf-live-testen)
-   - [Bonus: Feste eigene Domain mit Cloudflare Tunnel](#bonus-feste-eigene-domain-mit-cloudflare-tunnel)
 4. [Weg 3: Eigener Linux-VPS mit echter Domain & HTTPS](#4-weg-3-eigener-linux-vps-mit-echter-domain--https)
    - [Voraussetzungen](#voraussetzungen)
    - [Schritt 1: Server vorbereiten (One-Shot Setup)](#schritt-1-server-vorbereiten-one-shot-setup)
-   - [Schritt 2: Repository klonen](#schritt-2-repository-klonen)
+   - [Schritt 2: Repository und Setup prüfen](#schritt-2-repository-und-setup-prüfen)
    - [Schritt 3: `.env` Datei anlegen](#schritt-3-env-datei-anlegen)
    - [Schritt 4: Deployment ausführen](#schritt-4-deployment-ausführen)
    - [Schritt 5: Kostenloses SSL-Zertifikat (HTTPS) aktivieren](#schritt-5-kostenloses-ssl-zertifikat-https-aktivieren)
@@ -75,18 +74,18 @@ Wenn du vor dem Online-Stellen prüfen willst, wie sich die fertig gebündelten 
 *Was macht dieser Befehl?*
 - Kompiliert das Vue 3-Frontend mit Vite zu produktionsoptimierten JS/CSS-Bundles (`npm run build`).
 - Sammelt alle Dateien über `collectstatic`.
-- Startet den Django-Server im Produktionsmodus.
+- Startet den Django-Entwicklungsserver mit gebauten Assets. Dies ist eine lokale Vorschau, kein Produktionsserver.
 
 ---
 
 ## 3. Weg 2: Sofort online via Cloudflare Tunnel (Ohne Serverkauf)
 
 ### Warum Cloudflare Tunnel?
-Mit einem Cloudflare Tunnel kannst du deine lokale Antidote-Instanz innerhalb von 30 Sekunden weltweit über das Internet erreichbar machen.
+Ein Cloudflare Quick Tunnel macht deine lokale Antidote-Instanz öffentlich erreichbar. Verwende dafür nur Testdaten und Konten mit eigenen, starken Passwörtern.
 - **Keine Portweiterleitung (Port Forwarding)** am WLAN-Router nötig.
 - **Keine Freigabe der eigenen IP-Adresse** (sicher vor Port-Scans).
 - **Automatisches, echtes HTTPS-Zertifikat** von Cloudflare.
-- Voll funktionsfähig: Login, CSRF-Schutz, Kanban-Drag&Drop und Dateiuploads funktionieren 1:1 wie auf einem Server.
+- Der Starter setzt `DEBUG=False`, sichere Cookies und die Tunnel-Domain als erlaubten Host. Ein Neustart erzeugt einen neuen Sitzungsschlüssel; bestehende Sitzungen müssen sich neu anmelden.
 
 ---
 
@@ -105,25 +104,31 @@ sudo dpkg -i cloudflared.deb && rm cloudflared.deb
 brew install cloudflared
 ```
 
-#### 🪟 Windows (PowerShell als Administrator):
-```powershell
-winget install --id Cloudflare.cloudflared
-```
+#### 🪟 Windows:
+Die Startskripte sind Bash-Skripte. Nutze WSL mit Ubuntu und installiere Python, Node.js und `cloudflared` **innerhalb von WSL** nach der Linux-Anleitung. Eine reine PowerShell-Installation reicht für `./deploy/start_tunnel.sh` nicht aus.
 
 ---
 
-### Schritt 2: Tunnel mit 1 Klick starten
+### Schritt 2: Tunnel starten
 
-Führe im Projektverzeichnis einfach folgendes Skript aus:
+Richte zuerst Python-Abhängigkeiten, Frontend und Datenbank lokal ein:
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+npm ci
+.venv/bin/python manage.py migrate
+```
+Falls noch kein Admin-Konto existiert, lege eines mit `.venv/bin/python manage.py createsuperuser` an. Falls du zuvor `--seed` verwendet hast, ändere **alle** Demo-Passwörter (`admin`, `developer`, `viewer`) mit `.venv/bin/python manage.py changepassword BENUTZERNAME`. Der Tunnel-Starter bricht ab, solange eines dieser bekannten Passwörter aktiv ist.
+
+Starte danach im Projektverzeichnis:
 ```bash
 ./deploy/start_tunnel.sh
 ```
 
 **Was passiert automatisch?**
-1. Das Skript prüft, ob die Frontend-Assets gebaut wurden (falls nicht, baut es sie mit `npm run build`).
-2. Es sammelt statische Dateien (`collectstatic`).
-3. Es startet Django auf `127.0.0.1:8000`.
-4. Es startet den Cloudflare Quick Tunnel.
+1. Das Skript baut fehlende Frontend-Assets, führt Migrationen aus und sammelt statische Dateien.
+2. Es verweigert den Start bei bekannten Demo-Passwörtern oder belegtem lokalen Port.
+3. Es startet Django auf `127.0.0.1:8000` und danach den Cloudflare Quick Tunnel.
 
 Nach wenigen Sekunden siehst du im Terminal eine Ausgabe wie diese:
 ```text
@@ -139,7 +144,7 @@ Nach wenigen Sekunden siehst du im Terminal eine Ausgabe wie diese:
 
 Kopiere die angezeigte `https://...trycloudflare.com` URL und öffne sie in deinem Browser (oder teile sie mit Kollegen):
 
-1. **Login:** Mit `admin` / `admin123` anmelden.
+1. **Login:** Mit dem selbst angelegten Konto oder einem Demo-Konto mit geändertem Passwort anmelden.
 2. **Projekt & Issues testen:**
    - Neues Issue anlegen (Titel, Typ, Priorität, Assignee).
    - Issue im Kanban-Board per Drag & Drop zwischen den Spalten verschieben (z. B. *To Do* → *In Progress* → *Done*).
@@ -154,28 +159,6 @@ Kopiere die angezeigte `https://...trycloudflare.com` URL und öffne sie in dein
 > [!TIP]
 > **Beenden des Tunnels:**  
 > Drücke im Terminal einfach `Strg + C`. Django und der Tunnel werden sauber gestoppt.
-
----
-
-### Bonus: Feste eigene Domain mit Cloudflare Tunnel
-Wenn du eine eigene Domain bei Cloudflare verwaltest (z. B. `antidote.meine-firma.de`), kannst du einen dauerhaften, festen Namen nutzen:
-
-1. Einmalig anmelden:
-   ```bash
-   cloudflared tunnel login
-   ```
-2. Tunnel anlegen:
-   ```bash
-   cloudflared tunnel create antidote
-   ```
-3. DNS-Eintrag verknüpfen:
-   ```bash
-   cloudflared tunnel route dns antidote antidote.meine-firma.de
-   ```
-4. Tunnel dauerhaft starten:
-   ```bash
-   cloudflared tunnel run --url http://127.0.0.1:8000 antidote
-   ```
 
 ---
 
@@ -198,11 +181,15 @@ Für den dauerhaften Betrieb im Produktivmodus empfehlen wir einen günstigen Li
    ssh root@DEINE_SERVER_IP
    ```
 2. Setze im DNS-Verwaltungsmenü deiner Domain einen **A-Record** für deine Domain (z. B. `antidote.meine-domain.de`) auf die IP-Adresse deines Servers.
-3. Lade das Setup-Skript herunter (oder kopiere den Projektordner) und führe es aus:
+3. Installiere Git, klone das Repository und starte dann das Setup aus dem geklonten Verzeichnis:
    ```bash
-   sudo bash deploy/setup_server.sh antidote.meine-domain.de
+   sudo apt update
+   sudo apt install -y git
+   sudo mkdir -p /var/www/antidote
+   sudo git clone https://github.com/eschafellner/antidote-ng.git /var/www/antidote/app
+   sudo bash /var/www/antidote/app/deploy/setup_server.sh antidote.meine-domain.de
    ```
-   *(Ersetze `antidote.meine-domain.de` durch deine tatsächliche Domain).*
+   Ersetze die Domain und gegebenenfalls die Repository-URL. Das Setup übergibt den geklonten Ordner an den Systembenutzer `antidote`. Bis zum ersten Deployment liefert Nginx für App-Anfragen noch keinen gültigen Inhalt.
 
 **Was richtet das Skript automatisch ein?**
 - Richtet 2 GB Swap-Speicher ein (verhindert Speicherüberläufe beim Frontend-Build auf kleinen Servern).
@@ -214,23 +201,29 @@ Für den dauerhaften Betrieb im Produktivmodus empfehlen wir einen günstigen Li
 
 ---
 
-### Schritt 2: Repository klonen
+### Schritt 2: Repository und Setup prüfen
 
-Als Benutzer `antidote` das Repository in das Verzeichnis `/var/www/antidote/app` klonen:
+Prüfe, ob das Repository jetzt dem Dienstbenutzer gehört und der Nginx-Dienst läuft:
 ```bash
-sudo -u antidote git clone https://github.com/DEIN_USER/antidote-ng.git /var/www/antidote/app
+sudo -u antidote git -C /var/www/antidote/app status --short
+sudo systemctl status nginx
 ```
 
 ---
 
 ### Schritt 3: `.env` Datei anlegen
 
-Erstelle die Konfigurationsdatei für den Server:
+Erzeuge zuerst einen zufälligen Schlüssel und notiere ihn für die Konfiguration:
+```bash
+python3 -c 'import secrets; print(secrets.token_urlsafe(64))'
+```
+
+Erstelle dann die Konfigurationsdatei für den Server:
 ```bash
 sudo nano /var/www/antidote/app/.env
 ```
 
-Füge folgenden Inhalt ein (Passe Domain und Secret Key an):
+Füge folgenden Inhalt ein (ersetze Domain und `SECRET_KEY` durch den erzeugten Schlüssel):
 ```ini
 DEBUG=False
 SECRET_KEY=generiere-hier-einen-langen-zufaelligen-schluessel-12345
@@ -260,7 +253,7 @@ sudo chmod 640 /var/www/antidote/app/.env
 
 ### Schritt 4: Deployment ausführen
 
-Führe das Zero-Downtime-Deployment-Skript aus:
+Führe das Deployment-Skript aus:
 ```bash
 sudo bash /var/www/antidote/app/deploy.sh
 ```
@@ -269,14 +262,14 @@ sudo bash /var/www/antidote/app/deploy.sh
 1. Erstellt das Python Virtual Environment (`/var/www/antidote/venv`) und installiert alle Bibliotheken.
 2. Baut die Vue 3-Assets mit Vite (`npm ci && npm run build`).
 3. Kopiert statische Dateien mit `manage.py collectstatic`.
-4. Führt Datenbankmigrationen aus und schaltet SQLite in den extrem performanten WAL-Modus (`PRAGMA journal_mode=WAL`).
-5. Lädt den Gunicorn-Server über systemd ohne Downtime neu.
+4. Führt Datenbankmigrationen aus und aktiviert für SQLite den WAL-Modus.
+5. Startet den Gunicorn-Dienst oder lädt ihn bei Updates neu. Bei nicht kompatiblen Migrationen kann eine Wartungszeit nötig sein.
 
 #### Initialen Admin-Benutzer anlegen:
 ```bash
 sudo -u antidote /var/www/antidote/venv/bin/python /var/www/antidote/app/manage.py createsuperuser
 ```
-*(Oder führe `python manage.py seed_demo_data` aus, falls du Beispieldaten wünschst).*
+`seed_demo_data` erzeugt Konten mit bekannten Passwörtern und ist nur für lokale Testumgebungen geeignet.
 
 ---
 
@@ -301,7 +294,7 @@ Wenn du neuen Code auf GitHub gepusht hast und deinen Live-Server aktualisieren 
 ssh root@DEINE_SERVER_IP
 sudo bash /var/www/antidote/app/deploy.sh
 ```
-Das Skript zieht die neuesten Commits (`git pull`), baut geänderte Assets neu, führt eventuelle neue Datenbankmigrationen aus und startet die Gunicorn-Worker sanft neu.
+Das Skript zieht den konfigurierten Upstream-Branch als Benutzer `antidote` mit `git pull --ff-only`. Bei einem Git-Fehler stoppt es, statt einen erfolgreichen Update-Lauf vorzutäuschen. Anschließend baut es Assets, führt Migrationen aus und lädt Gunicorn neu. Plane bei Datenbankänderungen gegebenenfalls ein Wartungsfenster ein.
 
 ---
 

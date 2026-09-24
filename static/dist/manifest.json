@@ -44,7 +44,7 @@
     ]
   },
   "frontend/Pages/Auth/InviteExpired.vue": {
-    "file": "assets/InviteExpired-C8GHbeJe.js",
+    "file": "assets/InviteExpired-D6oTPW9z.js",
     "name": "InviteExpired",
     "src": "frontend/Pages/Auth/InviteExpired.vue",
     "isDynamicEntry": true,
@@ -134,7 +134,7 @@
     ]
   },
   "frontend/main.js": {
-    "file": "assets/main-D22aQBTr.js",
+    "file": "assets/main-D7ww2IWT.js",
     "name": "main",
     "src": "frontend/main.js",
     "isEntry": true,

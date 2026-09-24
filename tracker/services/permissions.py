@@ -32,7 +32,7 @@ class PermissionService:
     can_view_issue            | Yes          | Yes           | Yes    | Yes    | No
     can_create_issue          | Yes          | Yes           | Yes    | No     | No
     can_edit_issue            | Yes          | Yes           | Yes    | No     | No
-    can_delete_issue          | Yes          | Yes           | Yes*   | No     | No (*Admin/Reporter)
+    can_delete_issue          | Yes          | Yes           | No     | No     | No
     can_add_comment           | Yes          | Yes           | Yes    | No     | No
     can_edit_comment          | Yes          | Yes           | Author | No     | No
     can_delete_comment        | Yes          | Yes           | Author | No     | No
@@ -155,17 +155,19 @@ class PermissionService:
 
     @classmethod
     def can_delete_issue(cls, user: UserType, issue: Issue) -> bool:
-        """Global Admins, Project Admins, and the Issue Reporter (if member) can delete."""
+        """Nur globale Admins, Projekteigentümer und Projekt-Admins dürfen Issues löschen."""
         if not user or not user.is_authenticated:
             return False
         if cls.is_global_admin(user) or cls.is_project_owner(user, issue.project):
             return True
-        role = cls.get_role(user, issue.project)
-        if role == ProjectRole.ADMIN:
-            return True
-        if role == ProjectRole.MEMBER and issue.reporter_id == user.id:
-            return True
-        return False
+        return cls.get_role(user, issue.project) == ProjectRole.ADMIN
+
+    @classmethod
+    def can_assign_issue_to(cls, user: UserType, project: Project) -> bool:
+        """Ein Assignee muss Mitglied des zugehörigen Projekts sein."""
+        if not user or not user.is_authenticated:
+            return False
+        return ProjectMembership.objects.filter(user=user, project=project).exists()
 
     # -------------------------------------------------------------------------
     # Comment Permissions

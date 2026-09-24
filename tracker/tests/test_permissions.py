@@ -155,10 +155,9 @@ class PermissionServiceTests(TestCase):
         self.assertFalse(PermissionService.can_invite(self.member, self.project))
         self.assertFalse(PermissionService.can_manage_project(self.member, self.project))
 
-    def test_comment_and_reporter_deletion_rules(self) -> None:
-        """Verify reporter can delete their own issue, and comment author can edit/delete their comment."""
-        # Member created self.issue -> reporter
-        self.assertTrue(PermissionService.can_delete_issue(self.member, self.issue))
+    def test_comment_and_issue_deletion_rules(self) -> None:
+        """Verify only admins delete issues while comment authors retain comment rights."""
+        self.assertFalse(PermissionService.can_delete_issue(self.member, self.issue))
 
         # Admin created a different issue -> member cannot delete it
         admin_issue = Issue.objects.create(
@@ -170,6 +169,9 @@ class PermissionServiceTests(TestCase):
         )
         self.assertFalse(PermissionService.can_delete_issue(self.member, admin_issue))
         self.assertTrue(PermissionService.can_delete_issue(self.admin, admin_issue))
+
+        self.assertTrue(PermissionService.can_assign_issue_to(self.member, self.project))
+        self.assertFalse(PermissionService.can_assign_issue_to(self.outsider, self.project))
 
         # Comments
         comment = Comment.objects.create(

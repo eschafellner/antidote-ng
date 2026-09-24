@@ -7,11 +7,6 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-PYTHON_BIN="python3"
-if [ -d ".venv" ]; then
-    PYTHON_BIN=".venv/bin/python"
-fi
-
 show_help() {
     echo "Verwendung: ./run_local.sh [OPTION]"
     echo ""
@@ -46,29 +41,34 @@ if [ ! -d ".venv" ]; then
     .venv/bin/pip install --upgrade pip --quiet
     .venv/bin/pip install -r requirements.txt --quiet
 fi
+PYTHON_BIN=".venv/bin/python"
 
 # 2. Node Modules prüfen
 if [ ! -d "node_modules" ]; then
     echo ">>> Installiere npm-Pakete..."
-    npm install
+    npm ci
 fi
 
 # 3. Datenbank vorbereiten
 echo ">>> Wende Datenbankmigrationen an..."
 "$PYTHON_BIN" manage.py migrate --noinput
 
-if [ "$SEED_DATA" = true ] || [ ! -f "db.sqlite3" ]; then
+if [ "$SEED_DATA" = true ]; then
     echo ">>> Lade Demo-Daten..."
-    "$PYTHON_BIN" manage.py seed_demo_data || true
+    "$PYTHON_BIN" manage.py seed_demo_data
 fi
 
+VITE_PID=""
 cleanup() {
-    echo ""
-    echo ">>> Beende lokale Server..."
-    kill 0 2>/dev/null || true
-    exit 0
+    if [ -n "$VITE_PID" ]; then
+        echo ">>> Beende Vite Dev-Server..."
+        kill "$VITE_PID" 2>/dev/null || true
+        wait "$VITE_PID" 2>/dev/null || true
+    fi
 }
-trap cleanup SIGINT SIGTERM EXIT
+trap cleanup EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
 
 if [ "$MODE" = "preview" ]; then
     echo ">>> Baue Frontend-Assets (Production Bundle)..."
@@ -84,7 +84,8 @@ if [ "$MODE" = "preview" ]; then
 else
     # Dev-Modus: Vite HMR + Django
     echo ">>> Starte Vite Dev-Server (Port 5173)..."
-    VITE_DEV_MODE=True npm run dev &
+    VITE_DEV_MODE=True ./node_modules/.bin/vite &
+    VITE_PID=$!
 
     sleep 1
 

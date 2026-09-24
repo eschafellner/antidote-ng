@@ -58,6 +58,9 @@ class IssueService:
         if priority not in IssuePriority.values:
             raise ValidationError({"priority": f"Invalid issue priority '{priority}'."})
 
+        if assignee is not None and not PermissionService.can_assign_issue_to(assignee, project):
+            raise ValidationError({"assignee": "Assignee must be a project member."})
+
         with transaction.atomic():
             # Atomically generate the next sequential number & key under row lock
             number, key = IssueKeyService.generate_next_number_and_key(project.id)
@@ -104,6 +107,10 @@ class IssueService:
         """
         if not PermissionService.can_edit_issue(actor, issue):
             raise PermissionDenied("You do not have permission to edit this issue.")
+
+        assignee = fields.get("assignee")
+        if assignee is not None and not PermissionService.can_assign_issue_to(assignee, issue.project):
+            raise ValidationError({"assignee": "Assignee must be a project member."})
 
         changes: Dict[str, Tuple[Any, Any]] = {}
         allowed_fields = {

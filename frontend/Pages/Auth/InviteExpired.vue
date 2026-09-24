@@ -6,6 +6,10 @@ defineProps({
     type: String,
     default: 'This invitation link is invalid or has expired.',
   },
+  signed_in: {
+    type: Boolean,
+    default: false,
+  },
 });
 </script>
 
@@ -29,6 +33,16 @@ defineProps({
 
       <div class="mt-6">
         <Link
+          v-if="signed_in"
+          href="/logout/"
+          method="post"
+          as="button"
+          class="inline-flex items-center px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700"
+        >
+          Sign Out
+        </Link>
+        <Link
+          v-else
           href="/login/"
           class="inline-flex items-center px-4 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 transition-colors"
         >

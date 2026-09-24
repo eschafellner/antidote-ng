@@ -26,6 +26,7 @@ class IssueAndActivityServiceTests(TestCase):
         self.owner = User.objects.create_user(username="owner", password="password123")
         self.developer = User.objects.create_user(username="dev", password="password123")
         self.viewer = User.objects.create_user(username="viewer", password="password123")
+        self.outsider = User.objects.create_user(username="outsider", password="password123")
 
         self.project = Project.objects.create(
             name="Service Test Project",
@@ -112,6 +113,26 @@ class IssueAndActivityServiceTests(TestCase):
         self.assertEqual(assignee_log.old_value, "Unassigned")
         self.assertEqual(assignee_log.new_value, "dev")
 
+    def test_assignee_must_belong_to_project(self) -> None:
+        """Reject foreign assignees in both service operations."""
+        with self.assertRaises(ValidationError):
+            IssueService.create_issue(
+                project=self.project,
+                reporter=self.developer,
+                title="Cross-project assignee",
+                assignee=self.outsider,
+            )
+
+        issue = IssueService.create_issue(
+            project=self.project,
+            reporter=self.developer,
+            title="Valid issue",
+        )
+        with self.assertRaises(ValidationError):
+            IssueService.update_issue(issue=issue, actor=self.developer, assignee=self.outsider)
+        issue.refresh_from_db()
+        self.assertIsNone(issue.assignee)
+
     def test_soft_delete_and_restore_via_service(self) -> None:
         """Verify soft deleting and restoring creates appropriate activity logs."""
         issue = IssueService.create_issue(
@@ -120,14 +141,14 @@ class IssueAndActivityServiceTests(TestCase):
             title="Deletable Issue",
         )
 
-        IssueService.soft_delete_issue(issue=issue, actor=self.developer)
+        IssueService.soft_delete_issue(issue=issue, actor=self.owner)
         issue.refresh_from_db()
         self.assertTrue(issue.is_deleted)
 
         del_log = ActivityLog.objects.filter(issue=issue, action=ActivityAction.SOFT_DELETED).first()
         self.assertIsNotNone(del_log)
 
-        IssueService.restore_issue(issue=issue, actor=self.developer)
+        IssueService.restore_issue(issue=issue, actor=self.owner)
         issue.refresh_from_db()
         self.assertFalse(issue.is_deleted)
 
