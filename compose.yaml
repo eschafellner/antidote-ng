@@ -5,9 +5,9 @@ services:
     init: true
     environment:
       DEBUG: "False"
-      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY in deploy/docker.env setzen}
-      ALLOWED_HOSTS: ${DOMAIN:?DOMAIN in deploy/docker.env setzen},localhost,127.0.0.1
-      CSRF_TRUSTED_ORIGINS: https://${DOMAIN:?DOMAIN in deploy/docker.env setzen}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY in .env setzen}
+      ALLOWED_HOSTS: ${DOMAIN:?DOMAIN in .env setzen},localhost,127.0.0.1
+      CSRF_TRUSTED_ORIGINS: https://${DOMAIN:?DOMAIN in .env setzen}
       DATABASE_URL: sqlite:////app/data/db.sqlite3
       STATIC_ROOT: /app/staticfiles
       MEDIA_ROOT: /app/media
@@ -30,7 +30,7 @@ services:
       dockerfile: deploy/Dockerfile.caddy
     restart: unless-stopped
     environment:
-      DOMAIN: ${DOMAIN:?DOMAIN in deploy/docker.env setzen}
+      DOMAIN: ${DOMAIN:?DOMAIN in .env setzen}
     ports:
       - "80:80"
       - "443:443"

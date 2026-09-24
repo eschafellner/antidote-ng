@@ -23,11 +23,15 @@ Teile eine lokale Testinstanz per HTTPS. Installiere zuvor `cloudflared`, richte
 ./deploy/start_tunnel.sh
 ```
 
-### 3. Produktions-Deployment auf eigenem Linux-VPS (mit HTTPS)
-**Empfohlen für neue Installationen:** Docker Compose baut die App, startet Gunicorn und Caddy und verwaltet HTTPS sowie persistente Volumes für Datenbank und Uploads. Die Einrichtung und Update-Befehle stehen im [Deployment-Guide](DEPLOYMENT_GUIDE.md#empfohlen-docker-compose).
+### 3. Dauerhaftes Deployment mit Docker
 
-Für Domains bei Cloudflare gibt es alternativ [Docker Compose mit Cloudflare Tunnel](DEPLOYMENT_GUIDE.md#docker-compose-mit-cloudflare-tunnel). Dabei verbindet ein `cloudflared`-Container die App ohne öffentliche Server-Ports mit Cloudflare.
+Für eine Domain bei Cloudflare läuft Antidote wie EntailsNG mit einer `.env`-Datei und einem Compose-Befehl. Richte zuerst im Cloudflare-Dashboard einen Tunnel mit dem öffentlichen Hostnamen und der Service-URL `http://app:8000` ein. Kopiere dann `deploy/docker.env.example` nach `.env` und trage `DOMAIN`, einen neu erzeugten `SECRET_KEY` sowie `TUNNEL_TOKEN` ein. Die vollständigen Schritte stehen im [Deployment-Guide](DEPLOYMENT_GUIDE.md#docker-mit-cloudflare-tunnel).
 
-Das bisherige manuelle Setup mit Nginx, systemd und Certbot ist dort ebenfalls beschrieben. Bestehende Installationen benötigen für einen Wechsel zu Docker eine gesonderte Datenmigration.
+```bash
+docker compose up -d --build
+docker compose exec app python manage.py createsuperuser
+```
+
+Für einen VPS mit direkten Ports 80/443 kannst du in `.env` `COMPOSE_FILE=compose.yaml` setzen; dann übernimmt Caddy das HTTPS-Zertifikat. Docker speichert Datenbank und Uploads in persistenten Volumes. Das bisherige manuelle Setup mit Nginx, systemd und Certbot bleibt im Guide beschrieben.
 
 Details siehe **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**.
