@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, watch, nextTick } from 'vue';
 import { Link, router } from '@inertiajs/vue3';
 import UserAvatar from './UserAvatar.vue';
 import IssuePriorityBadge from './IssuePriorityBadge.vue';
@@ -18,11 +18,56 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // Controlled from the board (shortcut "S") to open the status menu of the focused card
+  menuOpen: {
+    type: Boolean,
+    default: false,
+  },
 });
 
-const emit = defineEmits(['statusChange']);
+const emit = defineEmits(['statusChange', 'menuClosed']);
 
 const showQuickMenu = ref(false);
+const menuRef = ref(null);
+
+const menuButtons = () => Array.from(menuRef.value?.querySelectorAll('button') || []);
+
+const openMenu = async () => {
+  showQuickMenu.value = true;
+  await nextTick();
+  const buttons = menuButtons();
+  const current = buttons.find(b => b.dataset.status === props.issue.status);
+  (current || buttons[0])?.focus();
+};
+
+const closeMenu = () => {
+  showQuickMenu.value = false;
+  emit('menuClosed');
+};
+
+watch(
+  () => props.menuOpen,
+  isOpen => {
+    if (isOpen) openMenu();
+    else showQuickMenu.value = false;
+  }
+);
+
+// Arrow keys move between options, Escape closes; Enter/Space activate natively
+const handleMenuKeyDown = e => {
+  const buttons = menuButtons();
+  const index = buttons.indexOf(document.activeElement);
+  if (e.key === 'ArrowDown' || e.key === 'j') {
+    e.preventDefault();
+    buttons[(index + 1) % buttons.length]?.focus();
+  } else if (e.key === 'ArrowUp' || e.key === 'k') {
+    e.preventDefault();
+    buttons[(index - 1 + buttons.length) % buttons.length]?.focus();
+  } else if (e.key === 'Escape') {
+    e.preventDefault();
+    closeMenu();
+  }
+};
 
 const isOverdue = computed(() => {
   if (!props.issue.due_date) return false;
@@ -46,7 +91,7 @@ const statuses = [
 ];
 
 const changeStatus = newStatus => {
-  showQuickMenu.value = false;
+  closeMenu();
   emit('statusChange', { issue: props.issue, newStatus });
 };
 </script>
@@ -84,7 +129,8 @@ const changeStatus = newStatus => {
             class="p-1 rounded text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
             title="Change status"
             aria-label="Change status"
-            @click.stop="showQuickMenu = !showQuickMenu"
+            :aria-expanded="showQuickMenu"
+            @click.stop="showQuickMenu ? closeMenu() : openMenu()"
           >
             <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2zm0 7a1 1 0 110-2 1 1 0 010 2z" />
@@ -93,8 +139,12 @@ const changeStatus = newStatus => {
 
           <div
             v-if="showQuickMenu"
+            ref="menuRef"
+            data-quick-menu
+            role="menu"
             class="origin-top-right absolute right-0 mt-1 w-36 rounded-lg shadow-lg bg-white border border-slate-200 py-1 z-30 text-xs focus:outline-none"
             @click.stop
+            @keydown.stop="handleMenuKeyDown"
           >
             <p class="px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
               Move to:
@@ -103,8 +153,10 @@ const changeStatus = newStatus => {
               v-for="s in statuses"
               :key="s.id"
               type="button"
+              role="menuitem"
+              :data-status="s.id"
               :class="[
-                'w-full text-left px-2.5 py-1.5 hover:bg-slate-50 flex items-center justify-between',
+                'w-full text-left px-2.5 py-1.5 hover:bg-slate-50 focus:bg-indigo-50 focus:outline-none flex items-center justify-between',
                 issue.status === s.id ? 'font-bold text-indigo-600' : 'text-slate-700',
               ]"
               @click="changeStatus(s.id)"

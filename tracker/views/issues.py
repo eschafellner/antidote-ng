@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpRequest, HttpResponse, JsonResponse, Http404
 from django.shortcuts import redirect, get_object_or_404
+from django.urls import reverse
 from django.views.decorators.http import require_http_methods
 import inertia
 
@@ -14,7 +15,12 @@ from tracker.models.issue import Issue, IssueType, IssueStatus, IssuePriority
 from tracker.services.issues import IssueService
 from tracker.services.permissions import PermissionService
 from tracker.services.invitations import MembershipService
-from tracker.views.utils import parse_request_data, format_validation_errors
+from tracker.views.utils import (
+    parse_request_data,
+    flash_errors,
+    flash_message,
+    redirect_back,
+)
 
 User = get_user_model()
 
@@ -23,6 +29,16 @@ def _get_project_assignee(raw_assignee: object, project: Project) -> AbstractBas
     if not str(raw_assignee).isdigit():
         raise Http404("Assignee not found in project.")
     return get_object_or_404(User, pk=raw_assignee, project_memberships__project=project)
+
+
+def _parse_due_date(raw_due_date: object) -> Optional[date]:
+    """Parse an ISO date (YYYY-MM-DD); empty values clear the due date."""
+    if not raw_due_date:
+        return None
+    try:
+        return datetime.strptime(str(raw_due_date), "%Y-%m-%d").date()
+    except ValueError:
+        raise ValidationError({"due_date": "Please enter a valid date (YYYY-MM-DD)."})
 
 
 def _get_project_and_check_access(slug: str, user) -> Project:
@@ -139,21 +155,9 @@ def issue_create_view(request: HttpRequest, slug: str) -> HttpResponse:
     status = data.get("status", IssueStatus.TODO)
     priority = data.get("priority", IssuePriority.MEDIUM)
 
-    raw_assignee = data.get("assignee_id")
-    assignee = None
-    if raw_assignee:
-        assignee = _get_project_assignee(raw_assignee, project)
-
-    raw_due_date = data.get("due_date")
-    due_date = None
-    if raw_due_date:
-        try:
-            due_date = datetime.strptime(raw_due_date, "%Y-%m-%d").date()
-        except ValueError:
-            pass
-
     try:
-        issue = IssueService.create_issue(
+        assignee = _get_project_assignee(data["assignee_id"], project) if data.get("assignee_id") else None
+        IssueService.create_issue(
             project=project,
             reporter=request.user,
             title=title,
@@ -162,11 +166,11 @@ def issue_create_view(request: HttpRequest, slug: str) -> HttpResponse:
             status=status,
             priority=priority,
             assignee=assignee,
-            due_date=due_date,
+            due_date=_parse_due_date(data.get("due_date")),
         )
-        return redirect("project_board", slug=project.slug)
     except ValidationError as exc:
-        return redirect("project_board", slug=project.slug)
+        flash_errors(request, exc)
+    return redirect_back(request, "project_board", slug=project.slug)
 
 
 @login_required
@@ -206,24 +210,19 @@ def issue_update_view(request: HttpRequest, slug: str, key: str) -> HttpResponse
         if field in data:
             update_kwargs[field] = data[field]
 
-    if "assignee_id" in data:
-        raw_assignee = data.get("assignee_id")
-        update_kwargs["assignee"] = (
-            _get_project_assignee(raw_assignee, issue.project) if raw_assignee else None
-        )
+    try:
+        if "assignee_id" in data:
+            raw_assignee = data.get("assignee_id")
+            update_kwargs["assignee"] = (
+                _get_project_assignee(raw_assignee, issue.project) if raw_assignee else None
+            )
+        if "due_date" in data:
+            update_kwargs["due_date"] = _parse_due_date(data.get("due_date"))
 
-    if "due_date" in data:
-        raw_due_date = data.get("due_date")
-        if raw_due_date:
-            try:
-                update_kwargs["due_date"] = datetime.strptime(raw_due_date, "%Y-%m-%d").date()
-            except ValueError:
-                update_kwargs["due_date"] = None
-        else:
-            update_kwargs["due_date"] = None
-
-    if update_kwargs:
-        IssueService.update_issue(issue=issue, actor=request.user, **update_kwargs)
+        if update_kwargs:
+            IssueService.update_issue(issue=issue, actor=request.user, **update_kwargs)
+    except ValidationError as exc:
+        flash_errors(request, exc)
 
     return redirect("issue_detail", slug=slug, key=key)
 
@@ -238,14 +237,23 @@ def issue_move_view(request: HttpRequest, slug: str, key: str) -> HttpResponse:
     data = parse_request_data(request)
 
     new_status = data.get("status", issue.status)
-    new_position = int(data.get("position", 0))
 
-    IssueService.move_issue(
-        issue=issue,
-        actor=request.user,
-        new_status=new_status,
-        new_position=new_position,
-    )
+    try:
+        try:
+            new_position = int(data.get("position", 0))
+        except (TypeError, ValueError):
+            raise ValidationError({"position": "Position must be an integer."})
+        IssueService.move_issue(
+            issue=issue,
+            actor=request.user,
+            new_status=new_status,
+            new_position=new_position,
+        )
+    except ValidationError as exc:
+        flash_errors(request, exc)
+    except PermissionDenied as exc:
+        # Reported as validation error so the optimistic board update is rolled back (onError)
+        flash_errors(request, ValidationError({"non_field_errors": str(exc)}))
     return redirect("project_board", slug=slug)
 
 
@@ -257,6 +265,11 @@ def issue_delete_view(request: HttpRequest, slug: str, key: str) -> HttpResponse
     """
     issue = _get_issue_and_check_access(slug, key, request.user)
     IssueService.soft_delete_issue(issue=issue, actor=request.user)
+    flash_message(
+        request,
+        f"Issue {issue.key} was deleted.",
+        undo_url=reverse("issue_restore", kwargs={"slug": slug, "key": key}),
+    )
     return redirect("project_board", slug=slug)
 
 
@@ -269,4 +282,5 @@ def issue_restore_view(request: HttpRequest, slug: str, key: str) -> HttpRespons
     project = _get_project_and_check_access(slug, request.user)
     issue = get_object_or_404(Issue, project=project, key=key)
     IssueService.restore_issue(issue=issue, actor=request.user)
+    flash_message(request, f"Issue {issue.key} was restored.")
     return redirect("issue_detail", slug=slug, key=key)

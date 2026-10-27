@@ -72,6 +72,7 @@ const editForm = useForm({
   first_name: '',
   last_name: '',
   is_global_admin: false,
+  is_active: true,
 });
 
 // Project Access Form
@@ -108,6 +109,7 @@ const openEditModal = user => {
   editForm.first_name = user.first_name || '';
   editForm.last_name = user.last_name || '';
   editForm.is_global_admin = user.is_global_admin;
+  editForm.is_active = user.is_active;
   editForm.password = '';
   showEditModal.value = true;
 };
@@ -132,7 +134,9 @@ const openAccessModal = user => {
     project_id: p.id,
     project_name: p.name,
     project_key: p.key,
-    role: currentMemberships[p.id] || '',
+    // The project owner always keeps the Admin role
+    is_owner: p.owner_id === user.id,
+    role: p.owner_id === user.id ? 'admin' : currentMemberships[p.id] || '',
   }));
   showAccessModal.value = true;
 };
@@ -147,7 +151,10 @@ const submitAccessModal = () => {
 };
 
 const deleteUser = user => {
-  if (confirm(`Are you sure you want to delete user "${user.username}"?`)) {
+  const message =
+    `Delete user "${user.username}"?\n\n` +
+    'Users who still own issues, comments, attachments or projects are deactivated instead, so the audit history is preserved.';
+  if (confirm(message)) {
     router.post(`/users/${user.id}/delete/`);
   }
 };
@@ -275,6 +282,12 @@ const deleteUser = user => {
                         {{ u.first_name && u.last_name ? `${u.first_name} ${u.last_name}` : u.username }}
                         <span v-if="u.id === currentUser?.id" class="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.2 rounded font-normal">
                           (You)
+                        </span>
+                        <span
+                          v-if="!u.is_active"
+                          class="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.2 rounded"
+                        >
+                          Inactive
                         </span>
                       </div>
                       <div class="text-[11px] text-slate-500">
@@ -588,6 +601,23 @@ const deleteUser = user => {
                     <span class="text-[11px] text-slate-500">Enable system-wide administration and project-wide access.</span>
                   </div>
                 </label>
+                <label
+                  v-if="selectedUser && selectedUser.id !== currentUser?.id"
+                  class="mt-3 flex items-center gap-3 cursor-pointer p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 transition-colors"
+                >
+                  <input
+                    v-model="editForm.is_active"
+                    type="checkbox"
+                    class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4"
+                  />
+                  <div>
+                    <span class="text-xs font-bold text-slate-900 block">Account Active</span>
+                    <span class="text-[11px] text-slate-500">Inactive users cannot sign in; their history is kept.</span>
+                  </div>
+                </label>
+                <p v-if="editForm.errors.is_active || editForm.errors.is_global_admin || editForm.errors.password" class="text-xs text-rose-600 mt-2 font-medium">
+                  {{ editForm.errors.is_active || editForm.errors.is_global_admin || editForm.errors.password }}
+                </p>
               </div>
             </div>
 
@@ -648,7 +678,9 @@ const deleteUser = user => {
 
                   <select
                     v-model="p.role"
-                    class="py-2 px-3 text-xs font-medium rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
+                    :disabled="p.is_owner"
+                    :title="p.is_owner ? 'Project owners always keep the Admin role' : ''"
+                    class="disabled:bg-slate-100 disabled:cursor-not-allowed py-2 px-3 text-xs font-medium rounded-xl border-slate-300 shadow-xs focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 bg-white"
                   >
                     <option value="">No Access (Remove)</option>
                     <option v-for="r in available_roles" :key="r.value" :value="r.value">

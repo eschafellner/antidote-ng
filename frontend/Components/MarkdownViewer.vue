@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 
 const props = defineProps({
   content: {
@@ -13,28 +14,31 @@ const props = defineProps({
   },
 });
 
-// Custom renderer to sanitize raw HTML tags and unsafe URLs in Markdown input
+const escapeHtml = value =>
+  String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+
+// Custom renderer: raw HTML is escaped, every interpolated value is escaped,
+// and only safe URL schemes are allowed.
 const renderer = {
   html({ text }) {
-    // Escape raw HTML tags to prevent XSS attacks
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
+    return escapeHtml(text);
   },
-  link({ href, title, text }) {
-    // Block dangerous schemes like javascript:
+  link({ href, title, tokens }) {
     const cleanHref = href && /^(https?:\/\/|mailto:|\/)/i.test(href) ? href : '#';
-    const titleAttr = title ? ` title="${title}"` : '';
-    return `<a href="${cleanHref}" target="_blank" rel="noopener noreferrer"${titleAttr} class="text-indigo-600 hover:text-indigo-800 underline">${text}</a>`;
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+    // Render link text via the inline parser so nested raw HTML passes through the html() renderer above
+    const inner = this.parser.parseInline(tokens);
+    return `<a href="${escapeHtml(cleanHref)}" target="_blank" rel="noopener noreferrer"${titleAttr} class="text-indigo-600 hover:text-indigo-800 underline">${inner}</a>`;
   },
   image({ href, title, text }) {
-    // Block dangerous schemes like javascript:
-    const cleanHref = href && /^(https?:\/\/|data:image\/|\/)/i.test(href) ? href : '';
-    const titleAttr = title ? ` title="${title}"` : '';
-    return `<img src="${cleanHref}" alt="${text}"${titleAttr} class="max-w-full rounded-lg my-2 border border-slate-200" />`;
+    const cleanHref = href && /^(https?:\/\/|\/)/i.test(href) ? href : '';
+    const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+    return `<img src="${escapeHtml(cleanHref)}" alt="${escapeHtml(text)}"${titleAttr} class="max-w-full rounded-lg my-2 border border-slate-200" />`;
   },
 };
 
@@ -44,7 +48,8 @@ const renderedHtml = computed(() => {
   if (!props.content || !props.content.trim()) {
     return '';
   }
-  return marked.parse(props.content);
+  // Defense in depth: sanitize the final HTML in addition to the escaping renderer
+  return DOMPurify.sanitize(marked.parse(props.content), { ADD_ATTR: ['target'] });
 });
 </script>
 

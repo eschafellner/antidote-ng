@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue';
 import { Link, usePage, router } from '@inertiajs/vue3';
 import UserAvatar from './UserAvatar.vue';
 import CreateIssueModal from './CreateIssueModal.vue';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
   project: {
@@ -25,6 +26,30 @@ const mobileMenuOpen = ref(false);
 
 const logout = () => {
   router.post('/logout/');
+};
+
+// Toasts: server flash messages (e.g. "Issue deleted" + Undo) and client-side error toasts
+const { toasts, push: pushToast, remove: removeToast } = useToast();
+
+watch(
+  () => page.props.flash,
+  flash => {
+    if (flash?.message) {
+      pushToast({ message: flash.message, level: flash.level, undoUrl: flash.undo_url, timeout: flash.undo_url ? 10000 : 6000 });
+    }
+  },
+  { immediate: true }
+);
+
+const undoToast = toast => {
+  removeToast(toast.id);
+  router.post(toast.undoUrl, {}, { preserveScroll: true });
+};
+
+const toastClasses = {
+  success: 'bg-slate-900 text-white border-slate-800',
+  info: 'bg-indigo-50 text-indigo-900 border-indigo-200',
+  error: 'bg-rose-50 text-rose-800 border-rose-200',
 };
 
 const handleGlobalKeyDown = (e) => {
@@ -266,6 +291,40 @@ const isUsersActive = computed(() => currentPath.value.includes('/users'));
       @close="showCreateModal = false"
     />
 
+    <!-- Toast Notifications -->
+    <div
+      class="fixed bottom-4 right-4 left-4 sm:left-auto z-[60] flex flex-col items-end gap-2 pointer-events-none"
+      aria-live="polite"
+    >
+      <div
+        v-for="toast in toasts"
+        :key="toast.id"
+        :class="[
+          'pointer-events-auto w-full sm:w-auto sm:max-w-sm flex items-center gap-3 px-4 py-3 rounded-xl border shadow-lg text-xs font-medium',
+          toastClasses[toast.level] || toastClasses.success,
+        ]"
+        :role="toast.level === 'error' ? 'alert' : 'status'"
+      >
+        <span class="flex-1">{{ toast.message }}</span>
+        <button
+          v-if="toast.undoUrl"
+          type="button"
+          class="font-bold text-indigo-300 hover:text-indigo-200 uppercase tracking-wider text-[11px]"
+          @click="undoToast(toast)"
+        >
+          Undo
+        </button>
+        <button
+          type="button"
+          class="opacity-60 hover:opacity-100 text-base leading-none"
+          aria-label="Dismiss notification"
+          @click="removeToast(toast.id)"
+        >
+          &times;
+        </button>
+      </div>
+    </div>
+
     <!-- Keyboard Shortcuts Modal -->
     <div
       v-if="showShortcutsModal"
@@ -303,7 +362,7 @@ const isUsersActive = computed(() => currentPath.value.includes('/users'));
             <kbd class="px-2 py-1 bg-slate-100 text-slate-800 font-mono rounded border border-slate-200">J / K</kbd>
           </div>
           <div class="flex items-center justify-between py-1 border-b border-slate-50">
-            <span class="font-medium">Change Status of Focused Card</span>
+            <span class="font-medium">Open Status Menu of Focused Card</span>
             <kbd class="px-2 py-1 bg-slate-100 text-slate-800 font-mono rounded border border-slate-200">S</kbd>
           </div>
           <div class="flex items-center justify-between py-1 border-b border-slate-50">

@@ -180,7 +180,7 @@ class GlobalUserManagementViewTests(TestCase):
             data={
                 "username": "tester",
                 "email": "tester@example.com",
-                "password": "password123",
+                "password": "Str0ng-Passphrase!",
                 "first_name": "Test",
                 "last_name": "User",
                 "is_global_admin": False,

@@ -1,4 +1,6 @@
-from typing import List, Dict, Any, Optional
+import mimetypes
+import os
+from typing import List, Dict, Any, Optional, Tuple
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
@@ -8,6 +10,16 @@ from tracker.models.attachment import IssueAttachment
 from tracker.services.permissions import PermissionService
 from tracker.services.activity import ActivityService
 from tracker.validators import validate_attachment_file
+
+# Only these types are rendered inline by the browser; everything else (incl. SVG, HTML-like
+# text formats) is forced to download to prevent stored XSS on the application origin.
+INLINE_SAFE_CONTENT_TYPES = frozenset({
+    "image/png",
+    "image/jpeg",
+    "image/gif",
+    "image/webp",
+    "application/pdf",
+})
 
 
 class AttachmentService:
@@ -31,10 +43,14 @@ class AttachmentService:
         if not file:
             raise ValidationError({"file": "No file was provided."})
 
-        # Security & whitelist validation
-        validate_attachment_file(file)
+        # Security & whitelist validation (mapped to the "file" field for the upload form)
+        try:
+            validate_attachment_file(file)
+        except ValidationError as exc:
+            raise ValidationError({"file": exc.messages})
 
-        content_type = getattr(file, "content_type", "") or ""
+        # Never trust the client-supplied Content-Type; derive it from the validated extension
+        content_type = cls.guess_content_type(getattr(file, "name", ""))
         file_size = getattr(file, "size", 0) or 0
         filename = getattr(file, "name", "unnamed_file")
 
@@ -66,12 +82,29 @@ class AttachmentService:
         filename = attachment.filename
         issue = attachment.issue
 
+        stored_file = attachment.file
         with transaction.atomic():
-            # Delete physical file
-            if attachment.file:
-                attachment.file.delete(save=False)
             attachment.delete()
             ActivityService.log_attachment_removed(issue=issue, actor=actor, filename=filename)
+            # Remove the physical file only once the DB deletion is committed
+            if stored_file:
+                transaction.on_commit(lambda: stored_file.storage.delete(stored_file.name))
+
+    @classmethod
+    def guess_content_type(cls, filename: str) -> str:
+        """Determine the MIME type from the file extension (fallback: application/octet-stream)."""
+        content_type, _ = mimetypes.guess_type(filename or "")
+        return content_type or "application/octet-stream"
+
+    @classmethod
+    def get_download_options(cls, attachment: IssueAttachment) -> Tuple[str, bool]:
+        """
+        Return (content_type, as_attachment) for serving an attachment.
+        The type is derived from the stored filename (not the upload request), and anything
+        outside INLINE_SAFE_CONTENT_TYPES is delivered as a download.
+        """
+        content_type = cls.guess_content_type(attachment.filename or os.path.basename(attachment.file.name))
+        return content_type, content_type not in INLINE_SAFE_CONTENT_TYPES
 
     @classmethod
     def get_issue_attachments(cls, issue: Issue, actor: Optional[AbstractBaseUser] = None) -> List[Dict[str, Any]]:
@@ -80,9 +113,10 @@ class AttachmentService:
         """
         attachments = (
             IssueAttachment.objects.filter(issue=issue)
-            .select_related("uploaded_by")
+            .select_related("uploaded_by", "issue")
             .order_by("-created_at")
         )
+        role = PermissionService.get_role(actor, issue.project) if actor else None
         return [
             {
                 "id": att.id,
@@ -97,7 +131,7 @@ class AttachmentService:
                     "last_name": att.uploaded_by.last_name,
                 },
                 "can_delete": (
-                    PermissionService.can_delete_attachment(actor, att) if actor else False
+                    PermissionService.can_delete_attachment(actor, att, role=role) if actor else False
                 ),
                 "created_at": att.created_at.isoformat(),
             }

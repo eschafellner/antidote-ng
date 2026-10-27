@@ -2,7 +2,6 @@ from tracker.views.auth import login_view, register_view, logout_view
 from tracker.views.projects import (
     project_list_view,
     project_create_view,
-    project_detail_view,
     project_update_view,
     project_delete_view,
 )
@@ -48,7 +47,6 @@ __all__ = [
     "logout_view",
     "project_list_view",
     "project_create_view",
-    "project_detail_view",
     "project_update_view",
     "project_delete_view",
     "project_settings_view",

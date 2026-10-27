@@ -8,7 +8,7 @@ import inertia
 from tracker.models.project import Project
 from tracker.services.projects import ProjectService
 from tracker.services.permissions import PermissionService
-from tracker.views.utils import parse_request_data, format_validation_errors
+from tracker.views.utils import parse_request_data, format_validation_errors, flash_errors
 
 
 @login_required
@@ -58,38 +58,6 @@ def project_create_view(request: HttpRequest) -> HttpResponse:
 
 
 @login_required
-@require_http_methods(["GET"])
-def project_detail_view(request: HttpRequest, slug: str) -> HttpResponse:
-    """
-    Show project overview / entry point. Scoped strictly to project members.
-    """
-    project = get_object_or_404(Project, slug=slug)
-    if not PermissionService.can_view_project(request.user, project):
-        raise Http404("Project not found.")
-
-    role = PermissionService.get_role(request.user, project)
-    is_owner = project.owner_id == request.user.id
-
-    return inertia.render(
-        request,
-        "Projects/Show",
-        props={
-            "project": {
-                "id": project.id,
-                "name": project.name,
-                "slug": project.slug,
-                "key": project.key,
-                "description": project.description,
-                "role": role,
-                "is_owner": is_owner,
-                "can_manage": PermissionService.can_manage_project(request.user, project),
-                "can_invite": PermissionService.can_invite(request.user, project),
-            }
-        },
-    )
-
-
-@login_required
 @require_http_methods(["POST", "PUT", "PATCH"])
 def project_update_view(request: HttpRequest, slug: str) -> HttpResponse:
     """
@@ -112,9 +80,9 @@ def project_update_view(request: HttpRequest, slug: str) -> HttpResponse:
             name=name,
             description=description,
         )
-        return redirect("project_settings", slug=project.slug)
     except ValidationError as exc:
-        return redirect("project_settings", slug=project.slug)
+        flash_errors(request, exc)
+    return redirect("project_settings", slug=project.slug)
 
 
 @login_required
@@ -126,7 +94,7 @@ def project_delete_view(request: HttpRequest, slug: str) -> HttpResponse:
     project = get_object_or_404(Project, slug=slug)
     if not PermissionService.can_view_project(request.user, project):
         raise Http404("Project not found.")
-    if not PermissionService.can_manage_project(request.user, project):
+    if not PermissionService.can_delete_project(request.user, project):
         raise PermissionDenied("You do not have permission to delete this project.")
 
     ProjectService.delete_project(project=project, actor=request.user)

@@ -5,7 +5,7 @@ import environ
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 env = environ.Env(
-    DEBUG=(bool, True),
+    DEBUG=(bool, False),
     SECRET_KEY=(str, "django-insecure-dev-key-change-in-production-1234567890"),
     ALLOWED_HOSTS=(list, ["127.0.0.1", "localhost", "testserver", ".trycloudflare.com"]),
     CSRF_TRUSTED_ORIGINS=(list, ["http://127.0.0.1:8000", "http://localhost:8000", "https://*.trycloudflare.com"]),
@@ -125,6 +125,16 @@ MEDIA_ROOT = Path(env("MEDIA_ROOT", default=str(BASE_DIR / "media")))
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# Cache (used for login rate limiting). LocMemCache is per process; use a shared
+# backend (e.g. Redis/DB cache) when running multiple Gunicorn workers.
+CACHES = {
+    "default": env.cache("CACHE_URL", default="locmemcache://"),
+}
+
+# Login throttling: max failed attempts per identifier/IP within the window
+LOGIN_RATE_LIMIT_ATTEMPTS = env.int("LOGIN_RATE_LIMIT_ATTEMPTS", default=5)
+LOGIN_RATE_LIMIT_WINDOW_SECONDS = env.int("LOGIN_RATE_LIMIT_WINDOW_SECONDS", default=15 * 60)
 
 # Issue Tracker Specific Settings
 MAX_ATTACHMENT_SIZE_BYTES = env.int("MAX_ATTACHMENT_SIZE_BYTES", default=10 * 1024 * 1024)  # 10 MB

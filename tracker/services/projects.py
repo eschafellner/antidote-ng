@@ -89,9 +89,9 @@ class ProjectService:
     def delete_project(cls, project: Project, actor: AbstractBaseUser) -> None:
         """
         Permanently delete a project and all associated issues, memberships, and invitations.
-        Only the project owner or designated admin can perform deletion.
+        Only the project owner or a global admin can perform deletion.
         """
-        if not PermissionService.can_manage_project(actor, project):
+        if not PermissionService.can_delete_project(actor, project):
             raise PermissionDenied("You do not have permission to delete this project.")
 
         project.delete()
@@ -108,10 +108,12 @@ class ProjectService:
         projects_qs: QuerySet[Project] = (
             PermissionService.filter_projects_for_user(user)
             .annotate(
-                total_issues=Count("issues", filter=Q(issues__is_deleted=False)),
+                # distinct=True: the membership join in filter_projects_for_user multiplies issue rows
+                total_issues=Count("issues", filter=Q(issues__is_deleted=False), distinct=True),
                 open_issues=Count(
                     "issues",
                     filter=Q(issues__is_deleted=False) & ~Q(issues__status="done") & ~Q(issues__status="canceled"),
+                    distinct=True,
                 ),
             )
             .order_by("name")

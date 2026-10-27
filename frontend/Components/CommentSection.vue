@@ -4,6 +4,7 @@ import { useForm, router } from '@inertiajs/vue3';
 import UserAvatar from './UserAvatar.vue';
 import MarkdownViewer from './MarkdownViewer.vue';
 import MarkdownEditor from './MarkdownEditor.vue';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
   projectSlug: {
@@ -24,6 +25,8 @@ const props = defineProps({
   },
 });
 
+const { showErrors } = useToast();
+
 const newComment = ref('');
 const isSubmitting = ref(false);
 const editingCommentId = ref(null);
@@ -42,6 +45,7 @@ const addComment = () => {
         newComment.value = '';
         isSubmitting.value = false;
       },
+      onError: showErrors,
       onFinish: () => {
         isSubmitting.value = false;
       },
@@ -71,6 +75,7 @@ const saveEdit = commentId => {
         editingCommentId.value = null;
         editContent.value = '';
       },
+      onError: showErrors,
     }
   );
 };

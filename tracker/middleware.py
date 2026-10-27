@@ -3,6 +3,8 @@ from django.http import HttpRequest, HttpResponse
 from django.middleware.csrf import get_token
 import inertia
 
+from tracker.views.utils import FLASH_ERRORS_SESSION_KEY, FLASH_MESSAGE_SESSION_KEY
+
 
 class InertiaShareMiddleware:
     """
@@ -32,6 +34,25 @@ class InertiaShareMiddleware:
         else:
             auth_data = {"user": None}
 
-
-        inertia.share(request, auth=auth_data)
+        inertia.share(request, auth=auth_data, **self._pop_flashed_props(request))
         return self.get_response(request)
+
+    @staticmethod
+    def _pop_flashed_props(request: HttpRequest) -> dict:
+        """
+        Consume validation errors / flash messages stored by a previous POST (Post-Redirect-Get).
+        Only page requests consume them, so parallel asset/attachment requests cannot swallow them.
+        """
+        if not hasattr(request, "session") or request.method != "GET":
+            return {}
+        is_page_request = "X-Inertia" in request.headers or "text/html" in request.headers.get("Accept", "")
+        if not is_page_request:
+            return {}
+        props: dict = {}
+        errors = request.session.pop(FLASH_ERRORS_SESSION_KEY, None)
+        if errors:
+            props["errors"] = errors
+        flash = request.session.pop(FLASH_MESSAGE_SESSION_KEY, None)
+        if flash:
+            props["flash"] = flash
+        return props

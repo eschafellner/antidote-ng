@@ -202,7 +202,8 @@ class IssueViewsTests(TestCase):
 
         self.issue.refresh_from_db()
         self.assertEqual(self.issue.status, IssueStatus.DONE)
-        self.assertEqual(self.issue.position, 2)
+        # Position is clamped to the column length (DONE column was empty)
+        self.assertEqual(self.issue.position, 0)
 
     def test_issue_soft_delete_and_restore_views(self) -> None:
         """Verify soft deletion hides issue from active lists and restore un-deletes it."""

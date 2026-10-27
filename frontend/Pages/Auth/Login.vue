@@ -1,5 +1,5 @@
 <script setup>
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
   next: {
@@ -98,12 +98,9 @@ const submit = () => {
           </button>
         </form>
 
-        <div class="mt-6 text-center text-xs text-slate-500">
-          Don't have an account?
-          <Link href="/register/" class="font-semibold text-indigo-600 hover:text-indigo-700">
-            Create account
-          </Link>
-        </div>
+        <p class="mt-6 text-center text-xs text-slate-500">
+          No account yet? Accounts are created via project invitations.
+        </p>
       </div>
     </div>
   </div>

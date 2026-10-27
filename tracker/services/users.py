@@ -1,8 +1,10 @@
 from typing import Optional, Dict, Any, List
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
+from django.db.models.deletion import ProtectedError
 
 from tracker.models.project import Project, ProjectMembership, ProjectRole
 from tracker.services.permissions import PermissionService
@@ -84,13 +86,15 @@ class GlobalUserService:
             raise ValidationError({"username": "Username is required."})
         if not email:
             raise ValidationError({"email": "Email address is required."})
-        if not password or len(password) < 6:
-            raise ValidationError({"password": "Password must be at least 6 characters long."})
+        if not password:
+            raise ValidationError({"password": "Password is required."})
 
         if User.objects.filter(username__iexact=username).exists():
             raise ValidationError({"username": "A user with this username already exists."})
         if User.objects.filter(email__iexact=email).exists():
             raise ValidationError({"email": "A user with this email already exists."})
+
+        cls._validate_password(password, User(username=username, email=email, first_name=first_name, last_name=last_name))
 
         with transaction.atomic():
             new_user = User.objects.create_user(
@@ -132,9 +136,10 @@ class GlobalUserService:
         last_name: str = "",
         is_global_admin: Optional[bool] = None,
         password: Optional[str] = None,
+        is_active: Optional[bool] = None,
     ) -> AbstractBaseUser:
         """
-        Update user profile, credentials, or global role.
+        Update user profile, credentials, global role, or account activation.
         """
         if not PermissionService.can_manage_global_users(actor):
             raise PermissionDenied("You do not have permission to update users.")
@@ -164,16 +169,23 @@ class GlobalUserService:
 
         if is_global_admin is not None:
             # Prevent demoting the last active superuser
-            if not is_global_admin and (target_user.is_superuser or target_user.is_staff):
-                superusers_count = User.objects.filter(is_superuser=True).count()
-                if superusers_count <= 1 and target_user.is_superuser:
-                    raise ValidationError({"is_global_admin": "Cannot demote the only remaining Global Admin."})
+            if not is_global_admin and target_user.is_superuser and cls._is_last_active_superuser(target_user):
+                raise ValidationError({"is_global_admin": "Cannot demote the only remaining Global Admin."})
 
             target_user.is_superuser = is_global_admin
             target_user.is_staff = is_global_admin
 
-        if password and len(password.strip()) >= 6:
-            target_user.set_password(password.strip())
+        if is_active is not None and is_active != target_user.is_active:
+            if not is_active:
+                if actor.id == target_user.id:
+                    raise ValidationError({"is_active": "You cannot deactivate your own account."})
+                if target_user.is_superuser and cls._is_last_active_superuser(target_user):
+                    raise ValidationError({"is_active": "Cannot deactivate the only remaining Global Admin."})
+            target_user.is_active = is_active
+
+        if password:
+            cls._validate_password(password, target_user)
+            target_user.set_password(password)
 
         target_user.save()
         return target_user
@@ -210,6 +222,11 @@ class GlobalUserService:
                 except Project.DoesNotExist:
                     continue
 
+                if project.owner_id == target_user.id and role != ProjectRole.ADMIN:
+                    raise ValidationError({
+                        "user": f"The owner of project '{project.name}' must keep the Admin role."
+                    })
+
                 if role in ProjectRole.values:
                     ProjectMembership.objects.update_or_create(
                         user=target_user,
@@ -224,9 +241,15 @@ class GlobalUserService:
                     ).delete()
 
     @classmethod
-    def delete_user(cls, actor: AbstractBaseUser, target_user_id: int) -> None:
+    def delete_user(cls, actor: AbstractBaseUser, target_user_id: int) -> bool:
         """
         Delete a user account. Admins cannot delete themselves.
+
+        Users that are still referenced by audit-relevant data (reported issues, comments,
+        attachments, owned projects) are deactivated instead of deleted: `is_active=False`
+        blocks login and running sessions, and non-owner memberships are removed.
+
+        :return: True if the user was deleted, False if the account was deactivated.
         """
         if not PermissionService.can_manage_global_users(actor):
             raise PermissionDenied("You do not have permission to delete users.")
@@ -239,9 +262,33 @@ class GlobalUserService:
         except User.DoesNotExist:
             raise ValidationError({"user": "User not found."})
 
-        if target_user.is_superuser:
-            superusers_count = User.objects.filter(is_superuser=True).count()
-            if superusers_count <= 1:
-                raise ValidationError({"user": "Cannot delete the only remaining Global Admin."})
+        if target_user.is_superuser and cls._is_last_active_superuser(target_user):
+            raise ValidationError({"user": "Cannot delete the only remaining Global Admin."})
 
-        target_user.delete()
+        try:
+            with transaction.atomic():
+                target_user.delete()
+            return True
+        except ProtectedError:
+            pass
+
+        with transaction.atomic():
+            target_user.is_active = False
+            target_user.save(update_fields=["is_active"])
+            ProjectMembership.objects.filter(user=target_user).exclude(
+                project__owner=target_user
+            ).delete()
+        return False
+
+    @classmethod
+    def _is_last_active_superuser(cls, user: AbstractBaseUser) -> bool:
+        """True if `user` is the only active superuser left."""
+        return not User.objects.filter(is_superuser=True, is_active=True).exclude(pk=user.pk).exists()
+
+    @classmethod
+    def _validate_password(cls, password: str, user: AbstractBaseUser) -> None:
+        """Apply Django's AUTH_PASSWORD_VALIDATORS and map errors to the password field."""
+        try:
+            validate_password(password, user=user)
+        except ValidationError as exc:
+            raise ValidationError({"password": " ".join(exc.messages)})

@@ -1,8 +1,11 @@
+import hashlib
 from typing import Optional, Tuple
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout, get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.core.cache import cache
 from django.core.validators import validate_email
 from django.http import HttpRequest
 
@@ -80,6 +83,16 @@ class AuthService:
         if not login_identifier or not password:
             raise ValidationError({"non_field_errors": "Please provide both username/email and password."})
 
+        throttle_key = cls._login_throttle_key(request, login_identifier)
+        max_attempts: int = settings.LOGIN_RATE_LIMIT_ATTEMPTS
+        window_seconds: int = settings.LOGIN_RATE_LIMIT_WINDOW_SECONDS
+        if cache.get(throttle_key, 0) >= max_attempts:
+            raise ValidationError({
+                "non_field_errors": (
+                    f"Too many failed login attempts. Please try again in {window_seconds // 60} minutes."
+                )
+            })
+
         # Try authenticate with username
         user = authenticate(request, username=login_identifier, password=password)
 
@@ -90,13 +103,31 @@ class AuthService:
                 user = authenticate(request, username=matched_user.username, password=password)
 
         if user is None:
+            cls._register_failed_login(throttle_key, window_seconds)
             raise ValidationError({"non_field_errors": "Invalid username/email or password."})
 
         if not user.is_active:
             raise ValidationError({"non_field_errors": "This account is currently disabled."})
 
+        cache.delete(throttle_key)
         login(request, user)
         return user
+
+    @classmethod
+    def _login_throttle_key(cls, request: HttpRequest, login_identifier: str) -> str:
+        """Cache key per (identifier, client IP); hashed to stay cache-backend safe."""
+        client_ip = request.META.get("REMOTE_ADDR", "") if request else ""
+        raw = f"{login_identifier.casefold()}|{client_ip}"
+        return "login-fail:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _register_failed_login(cls, throttle_key: str, window_seconds: int) -> None:
+        """Increment the failed-attempt counter; the window starts with the first failure."""
+        if not cache.add(throttle_key, 1, timeout=window_seconds):
+            try:
+                cache.incr(throttle_key)
+            except ValueError:
+                cache.set(throttle_key, 1, timeout=window_seconds)
 
     @classmethod
     def logout_user(cls, request: HttpRequest) -> None:

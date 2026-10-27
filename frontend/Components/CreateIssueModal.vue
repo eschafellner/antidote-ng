@@ -1,6 +1,7 @@
 <script setup>
 import { ref, watch, nextTick } from 'vue';
 import { useForm } from '@inertiajs/vue3';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
   show: {
@@ -24,6 +25,7 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 
 const titleInputRef = ref(null);
+const { showErrors } = useToast();
 
 const form = useForm({
   title: '',
@@ -60,6 +62,11 @@ const submit = () => {
     onSuccess: () => {
       form.reset();
       emit('close');
+    },
+    onError: errors => {
+      // Title/description errors are shown inline; everything else as a toast
+      const { title, description, ...otherErrors } = errors;
+      if (Object.keys(otherErrors).length) showErrors(otherErrors);
     },
   });
 };

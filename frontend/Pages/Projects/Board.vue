@@ -5,6 +5,7 @@ import draggable from 'vuedraggable';
 import AppLayout from '@/Components/AppLayout.vue';
 import IssueCard from '@/Components/IssueCard.vue';
 import CreateIssueModal from '@/Components/CreateIssueModal.vue';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
   project: {
@@ -35,6 +36,8 @@ watch(
 const showCreateModal = ref(false);
 const defaultModalStatus = ref('todo');
 const focusedIssueKey = ref(null);
+const statusMenuIssueKey = ref(null);
+const { showErrors } = useToast();
 
 const openCreateForStatus = status => {
   defaultModalStatus.value = status;
@@ -81,8 +84,9 @@ const onCardMove = (targetStatus, evt) => {
       {
         preserveScroll: true,
         preserveState: true,
-        onError: () => {
+        onError: errors => {
           columns.value = rollbackSnapshot;
+          showErrors(errors);
         },
       }
     );
@@ -115,8 +119,9 @@ const handleDirectStatusChange = ({ issue, newStatus }) => {
     {
       preserveScroll: true,
       preserveState: true,
-      onError: () => {
+      onError: errors => {
         columns.value = rollbackSnapshot;
+        showErrors(errors);
       },
     }
   );
@@ -131,7 +136,8 @@ const handleBoardKeyDown = e => {
     target.tagName === 'SELECT' ||
     target.isContentEditable;
 
-  if (isInput || showCreateModal.value) return;
+  // Keys inside an open status menu are handled by the card itself
+  if (isInput || showCreateModal.value || target.closest?.('[data-quick-menu]')) return;
 
   const items = allIssues.value;
   if (!items.length) return;
@@ -140,23 +146,21 @@ const handleBoardKeyDown = e => {
 
   if (e.key === 'j' || e.key === 'J' || e.key === 'ArrowDown') {
     e.preventDefault();
+    statusMenuIssueKey.value = null;
     const nextIndex = currentIndex < items.length - 1 ? currentIndex + 1 : 0;
     focusedIssueKey.value = items[nextIndex].key;
   } else if (e.key === 'k' || e.key === 'K' || e.key === 'ArrowUp') {
     e.preventDefault();
+    statusMenuIssueKey.value = null;
     const prevIndex = currentIndex > 0 ? currentIndex - 1 : items.length - 1;
     focusedIssueKey.value = items[prevIndex].key;
   } else if (e.key === 'Enter' && focusedIssueKey.value) {
     e.preventDefault();
     router.visit(`/projects/${props.project.slug}/issues/${focusedIssueKey.value}/`);
-  } else if ((e.key === 's' || e.key === 'S') && focusedIssueKey.value) {
+  } else if ((e.key === 's' || e.key === 'S') && focusedIssueKey.value && props.project.can_create_issue !== false) {
+    // Open the status menu of the focused card instead of blindly cycling through statuses
     e.preventDefault();
-    const currentItem = items.find(i => i.key === focusedIssueKey.value);
-    if (currentItem) {
-      const statusOrder = ['todo', 'in_progress', 'review', 'done', 'canceled'];
-      const nextStatusIndex = (statusOrder.indexOf(currentItem.status) + 1) % statusOrder.length;
-      handleDirectStatusChange({ issue: currentItem, newStatus: statusOrder[nextStatusIndex] });
-    }
+    statusMenuIssueKey.value = focusedIssueKey.value;
   }
 };
 
@@ -283,7 +287,9 @@ onUnmounted(() => {
                 :issue="element"
                 :project-slug="project.slug"
                 :is-focused="focusedIssueKey === element.key"
+                :menu-open="statusMenuIssueKey === element.key"
                 @status-change="handleDirectStatusChange"
+                @menu-closed="statusMenuIssueKey = null"
               />
             </template>
 

@@ -67,8 +67,29 @@ class AuthViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Auth/Register")
 
+    def _create_invite(self, email: str) -> ProjectInvitation:
+        project = Project.objects.create(name="Invite Project", key="INV", owner=self.user)
+        return ProjectInvitation.objects.create(
+            project=project, email=email, role=ProjectRole.MEMBER, invited_by=self.user
+        )
+
+    def test_register_without_invitation_is_rejected(self) -> None:
+        """Registration is invitation-only: no token, no account."""
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "newuser",
+                "email": "newuser@example.com",
+                "password": "NewUserPassword123!",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "only possible via an invitation link")
+        self.assertFalse(User.objects.filter(username="newuser").exists())
+
     def test_register_post_success(self) -> None:
         """Verify successful registration creates user and initializes session."""
+        invite = self._create_invite("newuser@example.com")
         response = self.client.post(
             reverse("register"),
             {
@@ -77,9 +98,10 @@ class AuthViewsTests(TestCase):
                 "password": "NewUserPassword123!",
                 "first_name": "New",
                 "last_name": "User",
+                "token": invite.token,
             },
         )
-        self.assertRedirects(response, reverse("project_list"))
+        self.assertRedirects(response, reverse("project_detail", kwargs={"slug": invite.project.slug}))
         created_user = User.objects.filter(username="newuser").first()
         self.assertIsNotNone(created_user)
         self.assertEqual(created_user.email, "newuser@example.com")
@@ -87,12 +109,14 @@ class AuthViewsTests(TestCase):
 
     def test_register_post_duplicate_username_fails(self) -> None:
         """Verify registration failure on existing username."""
+        invite = self._create_invite("different@example.com")
         response = self.client.post(
             reverse("register"),
             {
                 "username": "johndoe",
                 "email": "different@example.com",
                 "password": "ValidPassword123!",
+                "token": invite.token,
             },
         )
         self.assertEqual(response.status_code, 200)

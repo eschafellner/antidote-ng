@@ -8,7 +8,7 @@ import inertia
 from tracker.models.project import Project, ProjectRole
 from tracker.services.permissions import PermissionService
 from tracker.services.invitations import InvitationService, MembershipService
-from tracker.views.utils import parse_request_data, format_validation_errors
+from tracker.views.utils import parse_request_data, format_validation_errors, flash_errors
 
 
 def _get_project_for_management(slug: str, user) -> Project:
@@ -43,6 +43,7 @@ def project_settings_view(request: HttpRequest, slug: str) -> HttpResponse:
                 "key": project.key,
                 "description": project.description,
                 "is_owner": project.owner_id == request.user.id,
+                "can_delete": PermissionService.can_delete_project(request.user, project),
             },
             "members": members,
             "invitations": invitations,
@@ -63,12 +64,15 @@ def member_role_update_view(request: HttpRequest, slug: str, user_id: int) -> Ht
     data = parse_request_data(request)
     new_role = data.get("role", "")
 
-    MembershipService.update_member_role(
-        project=project,
-        member_user_id=user_id,
-        new_role=new_role,
-        actor=request.user,
-    )
+    try:
+        MembershipService.update_member_role(
+            project=project,
+            member_user_id=user_id,
+            new_role=new_role,
+            actor=request.user,
+        )
+    except ValidationError as exc:
+        flash_errors(request, exc)
     return redirect("project_settings", slug=project.slug)
 
 
@@ -79,11 +83,14 @@ def member_remove_view(request: HttpRequest, slug: str, user_id: int) -> HttpRes
     Remove a member from the project. Admin only.
     """
     project = _get_project_for_management(slug, request.user)
-    MembershipService.remove_member(
-        project=project,
-        member_user_id=user_id,
-        actor=request.user,
-    )
+    try:
+        MembershipService.remove_member(
+            project=project,
+            member_user_id=user_id,
+            actor=request.user,
+        )
+    except ValidationError as exc:
+        flash_errors(request, exc)
     return redirect("project_settings", slug=project.slug)
 
 
@@ -120,6 +127,7 @@ def invitation_create_view(request: HttpRequest, slug: str) -> HttpResponse:
                     "key": project.key,
                     "description": project.description,
                     "is_owner": project.owner_id == request.user.id,
+                    "can_delete": PermissionService.can_delete_project(request.user, project),
                 },
                 "members": members,
                 "invitations": invitations,
@@ -138,5 +146,8 @@ def invitation_revoke_view(request: HttpRequest, slug: str, invitation_id: int) 
     Revoke a pending invitation. Admin only.
     """
     project = _get_project_for_management(slug, request.user)
-    InvitationService.revoke_invitation(invitation_id=invitation_id, actor=request.user)
+    try:
+        InvitationService.revoke_invitation(invitation_id=invitation_id, actor=request.user)
+    except ValidationError as exc:
+        flash_errors(request, exc)
     return redirect("project_settings", slug=project.slug)

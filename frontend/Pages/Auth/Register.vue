@@ -52,22 +52,29 @@ const submit = () => {
       <p v-if="invite" class="mt-1 text-center text-xs text-indigo-600 font-medium">
         You've been invited to join <strong>{{ invite.project_name }}</strong>!
       </p>
-      <p v-else class="mt-1 text-center text-xs text-slate-500">
-        Get started with agile issue tracking
-      </p>
     </div>
 
     <div class="mt-6 sm:mx-auto sm:w-full sm:max-w-md">
       <div class="bg-white py-8 px-6 shadow-xl shadow-slate-200/50 rounded-2xl border border-slate-200/80 sm:px-10">
+        <!-- Invitation-only registration: no valid invite, no form -->
+        <div v-if="!invite" class="text-center space-y-3">
+          <p class="text-sm font-semibold text-slate-900">
+            {{ token ? 'This invitation link is invalid or has expired.' : 'Registration is by invitation only.' }}
+          </p>
+          <p class="text-xs text-slate-500">
+            Ask a project admin to send you an invitation link, or contact your administrator for an account.
+          </p>
+        </div>
+
         <!-- Global Errors -->
         <div
-          v-if="errors.non_field_errors"
+          v-if="invite && errors.non_field_errors"
           class="mb-6 rounded-xl bg-rose-50 border border-rose-200 p-3.5 text-xs text-rose-700 font-medium"
         >
           {{ errors.non_field_errors }}
         </div>
 
-        <form class="space-y-4" @submit.prevent="submit">
+        <form v-if="invite" class="space-y-4" @submit.prevent="submit">
           <div>
             <label class="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5">
               Username <span class="text-rose-500">*</span>

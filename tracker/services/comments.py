@@ -88,9 +88,10 @@ class CommentService:
         """
         comments = (
             Comment.objects.filter(issue=issue)
-            .select_related("author")
+            .select_related("author", "issue")
             .order_by("created_at")
         )
+        role = PermissionService.get_role(actor, issue.project) if actor else None
         return [
             {
                 "id": c.id,
@@ -103,10 +104,10 @@ class CommentService:
                     "last_name": c.author.last_name,
                 },
                 "can_edit": (
-                    PermissionService.can_edit_comment(actor, c) if actor else False
+                    PermissionService.can_edit_comment(actor, c, role=role) if actor else False
                 ),
                 "can_delete": (
-                    PermissionService.can_delete_comment(actor, c) if actor else False
+                    PermissionService.can_delete_comment(actor, c, role=role) if actor else False
                 ),
                 "created_at": c.created_at.isoformat(),
                 "updated_at": c.updated_at.isoformat(),

@@ -64,12 +64,16 @@ class InvitationAndMemberViewsTests(TestCase):
         self.member_membership.refresh_from_db()
         self.assertEqual(self.member_membership.role, ProjectRole.ADMIN)
 
-        # Attempt to demote owner -> validation error handled
-        with self.assertRaises(Exception):
-            self.client.post(
-                reverse("member_role_update", kwargs={"slug": self.project.slug, "user_id": self.owner.id}),
-                {"role": ProjectRole.VIEWER},
-            )
+        # Attempt to demote owner -> validation error is shown, role unchanged
+        response = self.client.post(
+            reverse("member_role_update", kwargs={"slug": self.project.slug, "user_id": self.owner.id}),
+            {"role": ProjectRole.VIEWER},
+        )
+        self.assertRedirects(response, reverse("project_settings", kwargs={"slug": self.project.slug}))
+        self.assertIn("role", self.client.session["_inertia_errors"])
+        self.assertEqual(
+            ProjectMembership.objects.get(project=self.project, user=self.owner).role, ProjectRole.ADMIN
+        )
 
     def test_member_remove_view(self) -> None:
         """Verify Admin can remove member, but cannot remove project owner."""
@@ -82,11 +86,13 @@ class InvitationAndMemberViewsTests(TestCase):
         self.assertRedirects(response, reverse("project_settings", kwargs={"slug": self.project.slug}))
         self.assertFalse(ProjectMembership.objects.filter(project=self.project, user=self.viewer).exists())
 
-        # Attempt to remove owner -> fails
-        with self.assertRaises(Exception):
-            self.client.post(
-                reverse("member_remove", kwargs={"slug": self.project.slug, "user_id": self.owner.id})
-            )
+        # Attempt to remove owner -> fails with validation error
+        response = self.client.post(
+            reverse("member_remove", kwargs={"slug": self.project.slug, "user_id": self.owner.id})
+        )
+        self.assertRedirects(response, reverse("project_settings", kwargs={"slug": self.project.slug}))
+        self.assertIn("user", self.client.session["_inertia_errors"])
+        self.assertTrue(ProjectMembership.objects.filter(project=self.project, user=self.owner).exists())
 
     def test_invitation_create_and_revoke_view(self) -> None:
         """Verify invitation creation and revocation by admin."""

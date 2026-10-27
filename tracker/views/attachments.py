@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import HttpRequest, HttpResponse, Http404, FileResponse
 from django.shortcuts import redirect, get_object_or_404
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_http_methods
 
 from tracker.models.project import Project
@@ -11,6 +12,10 @@ from tracker.models.issue import Issue
 from tracker.models.attachment import IssueAttachment
 from tracker.services.permissions import PermissionService
 from tracker.services.attachments import AttachmentService
+from tracker.views.utils import flash_errors
+
+# Restrictive policy for user-uploaded content: no scripts, no plugins, sandboxed origin
+ATTACHMENT_CSP = "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox"
 
 
 def _get_issue_for_request(slug: str, key: str, user) -> Issue:
@@ -38,24 +43,29 @@ def attachment_download_view(
     if not attachment.file:
         raise Http404("File not found.")
 
+    content_type, as_attachment = AttachmentService.get_download_options(attachment)
+
     # In production behind Nginx, use X-Accel-Redirect if enabled
     if getattr(settings, "USE_X_ACCEL_REDIRECT", False) and not settings.DEBUG:
         response = HttpResponse()
         rel_path = os.path.relpath(attachment.file.path, str(settings.MEDIA_ROOT))
         response["X-Accel-Redirect"] = f"/protected_media/{rel_path}"
-        response["Content-Type"] = attachment.content_type or "application/octet-stream"
-        response["Content-Disposition"] = f'inline; filename="{attachment.filename}"'
-        return response
+        response["Content-Type"] = content_type
+        response["Content-Disposition"] = content_disposition_header(as_attachment, attachment.filename)
+    else:
+        if not os.path.exists(attachment.file.path):
+            raise Http404("File not found on disk.")
+        response = FileResponse(
+            open(attachment.file.path, "rb"),
+            content_type=content_type,
+            as_attachment=as_attachment,
+            filename=attachment.filename,
+        )
 
-    if not os.path.exists(attachment.file.path):
-        raise Http404("File not found on disk.")
-
-    response = FileResponse(
-        open(attachment.file.path, "rb"),
-        content_type=attachment.content_type or "application/octet-stream",
-        as_attachment=False,
-        filename=attachment.filename,
-    )
+    response["X-Content-Type-Options"] = "nosniff"
+    if content_type != "application/pdf":
+        # Browsers refuse to render PDFs in sandboxed documents, so PDFs are exempt
+        response["Content-Security-Policy"] = ATTACHMENT_CSP
     return response
 
 
@@ -77,8 +87,8 @@ def attachment_upload_view(request: HttpRequest, slug: str, key: str) -> HttpRes
             file=uploaded_file,
             uploaded_by=request.user,
         )
-    except ValidationError:
-        pass
+    except ValidationError as exc:
+        flash_errors(request, exc)
 
     return redirect("issue_detail", slug=slug, key=key)
 
@@ -91,9 +101,14 @@ def attachment_delete_view(
     """
     Delete an attachment from an issue.
     """
-    _get_issue_for_request(slug, key, request.user)
-    AttachmentService.delete_attachment(
-        attachment_id=attachment_id,
-        actor=request.user,
-    )
+    issue = _get_issue_for_request(slug, key, request.user)
+    # Scope the attachment to the issue from the URL (multi-tenancy)
+    get_object_or_404(IssueAttachment, id=attachment_id, issue=issue)
+    try:
+        AttachmentService.delete_attachment(
+            attachment_id=attachment_id,
+            actor=request.user,
+        )
+    except ValidationError as exc:
+        flash_errors(request, exc)
     return redirect("issue_detail", slug=slug, key=key)

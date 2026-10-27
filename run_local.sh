@@ -80,7 +80,8 @@ if [ "$MODE" = "preview" ]; then
     echo ">>> Antidote läuft im Preview-Modus unter: http://127.0.0.1:8000"
     echo ">>> Login: admin / admin123 (falls Demo-Daten geladen wurden)"
     echo "===================================================================="
-    "$PYTHON_BIN" manage.py runserver --insecure 127.0.0.1:8000
+    # DEBUG=True, da Secure-Cookies (DEBUG=False) über http://127.0.0.1 nicht funktionieren
+    DEBUG=True "$PYTHON_BIN" manage.py runserver --insecure 127.0.0.1:8000
 else
     # Dev-Modus: Vite HMR + Django
     echo ">>> Starte Vite Dev-Server (Port 5173)..."
@@ -96,5 +97,5 @@ else
     echo ">>> Vite HMR läuft unter: http://127.0.0.1:5173"
     echo ">>> Login: admin / admin123 (falls Demo-Daten geladen wurden)"
     echo "===================================================================="
-    VITE_DEV_MODE=True "$PYTHON_BIN" manage.py runserver 127.0.0.1:8000
+    DEBUG=True VITE_DEV_MODE=True "$PYTHON_BIN" manage.py runserver 127.0.0.1:8000
 fi

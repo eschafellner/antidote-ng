@@ -10,6 +10,7 @@ import MarkdownEditor from './MarkdownEditor.vue';
 import AttachmentManager from './AttachmentManager.vue';
 import CommentSection from './CommentSection.vue';
 import ActivityTimeline from './ActivityTimeline.vue';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
   show: {
@@ -58,6 +59,7 @@ const props = defineProps({
 });
 
 const emit = defineEmits(['close']);
+const { showErrors } = useToast();
 
 const issue = computed(() => props.detail.issue);
 const permissions = computed(() => props.detail.permissions || {});
@@ -90,6 +92,12 @@ const updateField = (fieldName, value) => {
     {
       preserveScroll: true,
       preserveState: true,
+      onError: errors => {
+        // Reset local edit buffers to the persisted values
+        editTitle.value = issue.value.title;
+        editDescription.value = issue.value.description || '';
+        showErrors(errors);
+      },
     }
   );
 };
@@ -111,18 +119,17 @@ const cancelDescription = () => {
   isEditingDescription.value = false;
 };
 
+// Soft delete is reversible: no confirm dialog, the board shows an "Undo" toast instead
 const softDeleteIssue = () => {
-  if (confirm(`Are you sure you want to delete issue ${issue.value.key}?`)) {
-    router.post(
-      `/projects/${issue.value.project.slug}/issues/${issue.value.key}/delete/`,
-      {},
-      {
-        onSuccess: () => {
-          emit('close');
-        },
-      }
-    );
-  }
+  router.post(
+    `/projects/${issue.value.project.slug}/issues/${issue.value.key}/delete/`,
+    {},
+    {
+      onSuccess: () => {
+        emit('close');
+      },
+    }
+  );
 };
 
 const restoreIssue = () => {
@@ -197,6 +204,13 @@ const restoreIssue = () => {
 
       <!-- Slide-over Scrollable Body -->
       <div class="flex-1 overflow-y-auto p-6 space-y-6">
+        <div
+          v-if="issue.is_deleted"
+          class="rounded-xl bg-rose-50 border border-rose-200 px-4 py-3 text-xs text-rose-800"
+        >
+          This issue has been deleted and is read-only.
+          <span v-if="permissions.can_delete">Restore it to make changes.</span>
+        </div>
         <!-- Title (Inline edit) -->
         <div>
           <div v-if="isEditingTitle && permissions.can_edit" class="flex items-center gap-2">

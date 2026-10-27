@@ -5,7 +5,7 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
-from django.db.models import Q, F
+from django.db.models import Q
 
 from tracker.models.project import Project
 from tracker.models.issue import Issue, IssueType, IssueStatus, IssuePriority
@@ -104,15 +104,11 @@ class IssueService:
     ) -> Issue:
         """
         Update issue fields, enforcing permissions and logging field-level modifications.
+        A status change places the issue at the bottom of the target Kanban column.
         """
         if not PermissionService.can_edit_issue(actor, issue):
             raise PermissionDenied("You do not have permission to edit this issue.")
 
-        assignee = fields.get("assignee")
-        if assignee is not None and not PermissionService.can_assign_issue_to(assignee, issue.project):
-            raise ValidationError({"assignee": "Assignee must be a project member."})
-
-        changes: Dict[str, Tuple[Any, Any]] = {}
         allowed_fields = {
             "title",
             "description",
@@ -121,32 +117,59 @@ class IssueService:
             "priority",
             "assignee",
             "due_date",
-            "position",
         }
+        fields = {name: value for name, value in fields.items() if name in allowed_fields}
+        cls._validate_issue_fields(issue.project, fields)
+
+        if "title" in fields:
+            fields["title"] = fields["title"].strip()
+        if "description" in fields:
+            fields["description"] = (fields["description"] or "").strip()
+
+        changes: Dict[str, Tuple[Any, Any]] = {}
+        changed_field_names: List[str] = []
+        old_status = issue.status
 
         with transaction.atomic():
             for field, new_val in fields.items():
-                if field not in allowed_fields:
-                    continue
-
                 old_val = getattr(issue, field)
-                if old_val != new_val:
-                    # Capture representation for foreign key
-                    if field == "assignee":
-                        old_repr = old_val.username if old_val else "Unassigned"
-                        new_repr = new_val.username if new_val else "Unassigned"
-                        changes[field] = (old_repr, new_repr)
-                    else:
-                        changes[field] = (old_val, new_val)
+                if old_val == new_val:
+                    continue
+                # Capture representation for foreign key
+                if field == "assignee":
+                    old_repr = old_val.username if old_val else "Unassigned"
+                    new_repr = new_val.username if new_val else "Unassigned"
+                    changes[field] = (old_repr, new_repr)
+                else:
+                    changes[field] = (old_val, new_val)
+                setattr(issue, field, new_val)
+                changed_field_names.append(field)
 
-                    setattr(issue, field, new_val)
-
-            if changes:
-                update_field_names = list(fields.keys()) + ["updated_at"]
-                issue.save(update_fields=update_field_names)
+            if changed_field_names:
+                issue.save(update_fields=changed_field_names + ["updated_at"])
+                if issue.status != old_status:
+                    cls._reposition_issue(issue, old_status=old_status, new_position=None)
                 ActivityService.log_field_changes(issue=issue, actor=actor, changes=changes)
 
         return issue
+
+    @classmethod
+    def _validate_issue_fields(cls, project: Project, fields: Dict[str, Any]) -> None:
+        """Validate choice fields, title and assignee of an issue update payload."""
+        errors: Dict[str, str] = {}
+        if "title" in fields and not str(fields["title"] or "").strip():
+            errors["title"] = "Issue title cannot be empty."
+        if "type" in fields and fields["type"] not in IssueType.values:
+            errors["type"] = f"Invalid issue type '{fields['type']}'."
+        if "status" in fields and fields["status"] not in IssueStatus.values:
+            errors["status"] = f"Invalid issue status '{fields['status']}'."
+        if "priority" in fields and fields["priority"] not in IssuePriority.values:
+            errors["priority"] = f"Invalid issue priority '{fields['priority']}'."
+        assignee = fields.get("assignee")
+        if assignee is not None and not PermissionService.can_assign_issue_to(assignee, project):
+            errors["assignee"] = "Assignee must be a project member."
+        if errors:
+            raise ValidationError(errors)
 
     @classmethod
     def move_issue(
@@ -157,8 +180,11 @@ class IssueService:
         new_position: int,
     ) -> Issue:
         """
-        Move an issue across Kanban columns and update its vertical position index.
-        Reorders surrounding cards within the target column atomically.
+        Move an issue across Kanban columns and/or within a column.
+
+        `new_position` is the final 0-based index of the card in the target column (as reported
+        by Sortable.js). Target and source columns are renumbered densely (0..n-1), so stored
+        positions always match the visible order.
         """
         if not PermissionService.can_edit_issue(actor, issue):
             raise PermissionDenied("You do not have permission to move this issue.")
@@ -167,20 +193,11 @@ class IssueService:
             raise ValidationError({"status": f"Invalid status '{new_status}'."})
 
         old_status = issue.status
-        old_pos = issue.position
 
         with transaction.atomic():
-            # Shift issues in target column to make room at new_position
-            Issue.objects.filter(
-                project=issue.project,
-                status=new_status,
-                is_deleted=False,
-                position__gte=new_position,
-            ).exclude(pk=issue.pk).update(position=F("position") + 1)
-
             issue.status = new_status
-            issue.position = max(0, new_position)
-            issue.save(update_fields=["status", "position", "updated_at"])
+            issue.save(update_fields=["status", "updated_at"])
+            cls._reposition_issue(issue, old_status=old_status, new_position=new_position)
 
             if old_status != new_status:
                 ActivityService.log_status_change(
@@ -188,6 +205,46 @@ class IssueService:
                 )
 
         return issue
+
+    @classmethod
+    def _column_issue_ids(cls, project: Project, status: str, exclude_pk: Optional[int] = None) -> List[int]:
+        """Return the ids of a Kanban column in board order, locking the rows."""
+        qs = Issue.objects.select_for_update().filter(project=project, status=status, is_deleted=False)
+        if exclude_pk is not None:
+            qs = qs.exclude(pk=exclude_pk)
+        return list(qs.order_by("position", "-created_at").values_list("id", flat=True))
+
+    @classmethod
+    def _apply_column_order(cls, ordered_ids: List[int]) -> None:
+        """Persist dense positions (0..n-1) for the given ordered issue ids."""
+        issues_by_id = Issue.objects.in_bulk(ordered_ids)
+        changed: List[Issue] = []
+        for index, pk in enumerate(ordered_ids):
+            obj = issues_by_id[pk]
+            if obj.position != index:
+                obj.position = index
+                changed.append(obj)
+        if changed:
+            Issue.objects.bulk_update(changed, ["position"])
+
+    @classmethod
+    def _reposition_issue(cls, issue: Issue, old_status: str, new_position: Optional[int]) -> None:
+        """
+        Insert `issue` (whose status is already set) at `new_position` in its column
+        (None = bottom) and compact the source column if the status changed.
+        Must be called inside a transaction.
+        """
+        target_ids = cls._column_issue_ids(issue.project, issue.status, exclude_pk=issue.pk)
+        if new_position is None:
+            index = len(target_ids)
+        else:
+            index = max(0, min(new_position, len(target_ids)))
+        target_ids.insert(index, issue.pk)
+        cls._apply_column_order(target_ids)
+        issue.position = index
+
+        if old_status != issue.status:
+            cls._apply_column_order(cls._column_issue_ids(issue.project, old_status))
 
     @classmethod
     def soft_delete_issue(cls, issue: Issue, actor: AbstractBaseUser) -> Issue:

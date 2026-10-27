@@ -3,6 +3,7 @@ import { ref } from 'vue';
 import { Head, useForm, router } from '@inertiajs/vue3';
 import AppLayout from '@/Components/AppLayout.vue';
 import UserAvatar from '@/Components/UserAvatar.vue';
+import { useToast } from '@/composables/useToast';
 
 const props = defineProps({
   project: {
@@ -27,6 +28,8 @@ const props = defineProps({
   },
 });
 
+const { showErrors } = useToast();
+
 // Project metadata form
 const projectForm = useForm({
   name: props.project.name,
@@ -36,6 +39,7 @@ const projectForm = useForm({
 const updateProject = () => {
   projectForm.post(`/projects/${props.project.slug}/update/`, {
     preserveScroll: true,
+    onError: showErrors,
   });
 };
 
@@ -58,7 +62,7 @@ const changeMemberRole = (userId, newRole) => {
   router.post(
     `/projects/${props.project.slug}/members/${userId}/role/`,
     { role: newRole },
-    { preserveScroll: true }
+    { preserveScroll: true, onError: showErrors }
   );
 };
 
@@ -67,7 +71,7 @@ const removeMember = userId => {
     router.post(
       `/projects/${props.project.slug}/members/${userId}/remove/`,
       {},
-      { preserveScroll: true }
+      { preserveScroll: true, onError: showErrors }
     );
   }
 };
@@ -76,7 +80,7 @@ const revokeInvite = invitationId => {
   router.post(
     `/projects/${props.project.slug}/invitations/${invitationId}/revoke/`,
     {},
-    { preserveScroll: true }
+    { preserveScroll: true, onError: showErrors }
   );
 };
 
@@ -292,7 +296,7 @@ const deleteProject = () => {
       </div>
 
       <!-- Danger Zone -->
-      <div v-if="project.is_owner" class="bg-rose-50/60 rounded-2xl border border-rose-200 p-6">
+      <div v-if="project.can_delete" class="bg-rose-50/60 rounded-2xl border border-rose-200 p-6">
         <h2 class="text-sm font-bold text-rose-900">Danger Zone</h2>
         <p class="text-xs text-rose-700 mt-1">
           Deleting this project will permanently remove all issues, comments, attachments, and memberships.

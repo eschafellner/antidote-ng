@@ -8,7 +8,8 @@ from tracker.models.project import Project
 from tracker.models.issue import Issue
 from tracker.services.permissions import PermissionService
 from tracker.services.comments import CommentService
-from tracker.views.utils import parse_request_data
+from tracker.models.comment import Comment
+from tracker.views.utils import parse_request_data, flash_errors
 
 
 def _get_issue_for_request(slug: str, key: str, user) -> Issue:
@@ -31,12 +32,14 @@ def comment_create_view(request: HttpRequest, slug: str, key: str) -> HttpRespon
     data = parse_request_data(request)
     content = data.get("content", "")
 
-    if content and content.strip():
+    try:
         CommentService.create_comment(
             issue=issue,
             author=request.user,
             content=content,
         )
+    except ValidationError as exc:
+        flash_errors(request, exc)
 
     return redirect("issue_detail", slug=slug, key=key)
 
@@ -49,16 +52,20 @@ def comment_update_view(
     """
     Update an existing comment. Author or Project Admin only.
     """
-    _get_issue_for_request(slug, key, request.user)
+    issue = _get_issue_for_request(slug, key, request.user)
+    # Scope the comment to the issue from the URL (multi-tenancy)
+    get_object_or_404(Comment, id=comment_id, issue=issue)
     data = parse_request_data(request)
     content = data.get("content", "")
 
-    if content and content.strip():
+    try:
         CommentService.update_comment(
             comment_id=comment_id,
             author=request.user,
             content=content,
         )
+    except ValidationError as exc:
+        flash_errors(request, exc)
 
     return redirect("issue_detail", slug=slug, key=key)
 
@@ -71,7 +78,8 @@ def comment_delete_view(
     """
     Delete a comment. Author or Project Admin only.
     """
-    _get_issue_for_request(slug, key, request.user)
+    issue = _get_issue_for_request(slug, key, request.user)
+    get_object_or_404(Comment, id=comment_id, issue=issue)
     CommentService.delete_comment(
         comment_id=comment_id,
         actor=request.user,

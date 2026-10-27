@@ -27,6 +27,7 @@ class PermissionService:
     can_manage_global_users   | Yes          | No            | No     | No     | No
     can_view_project          | Yes          | Yes           | Yes    | Yes    | No
     can_manage_project        | Yes          | Yes           | No     | No     | No
+    can_delete_project        | Yes          | Owner only    | No     | No     | No
     can_manage_members        | Yes          | Yes           | No     | No     | No
     can_invite                | Yes          | Yes           | No     | No     | No
     can_view_issue            | Yes          | Yes           | Yes    | Yes    | No
@@ -39,6 +40,12 @@ class PermissionService:
     can_upload_attachment     | Yes          | Yes           | Yes    | No     | No
     can_delete_attachment     | Yes          | Yes           | Uploader|No    | No
     =================================================================================================
+
+    Soft-deleted issues are read-only: editing, commenting and attachment changes are denied
+    until the issue is restored (restoring is covered by can_delete_issue).
+
+    Checks that are evaluated for many objects of the same project (comments, attachments)
+    accept an optional pre-computed `role` (from get_role) to avoid one query per object.
     """
 
     @classmethod
@@ -107,6 +114,13 @@ class PermissionService:
         return role == ProjectRole.ADMIN
 
     @classmethod
+    def can_delete_project(cls, user: UserType, project: Project) -> bool:
+        """Only the Project Owner or a Global Admin may permanently delete a project."""
+        if not user or not user.is_authenticated:
+            return False
+        return cls.is_global_admin(user) or cls.is_project_owner(user, project)
+
+    @classmethod
     def can_manage_members(cls, user: UserType, project: Project) -> bool:
         """Global Admin, Project Owner, or Project Admin can modify/remove project members."""
         if not user or not user.is_authenticated:
@@ -146,7 +160,7 @@ class PermissionService:
     @classmethod
     def can_edit_issue(cls, user: UserType, issue: Issue) -> bool:
         """Global Admins, Project Admins, and Members can edit issues. Viewers cannot."""
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or issue.is_deleted:
             return False
         if cls.is_global_admin(user) or cls.is_project_owner(user, issue.project):
             return True
@@ -176,24 +190,25 @@ class PermissionService:
     @classmethod
     def can_add_comment(cls, user: UserType, issue: Issue) -> bool:
         """Global Admins, Project Admins, and Members can comment on issues. Viewers cannot."""
+        if issue.is_deleted:
+            return False
         return cls.can_create_issue(user, issue.project)
 
     @classmethod
-    def can_edit_comment(cls, user: UserType, comment: Comment) -> bool:
+    def can_edit_comment(cls, user: UserType, comment: Comment, role: Optional[str] = None) -> bool:
         """Author, Global Admin, or Project Admin can edit comment content."""
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or comment.issue.is_deleted:
             return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, comment.issue.project):
-            return True
-        role = cls.get_role(user, comment.issue.project)
+        if role is None:
+            role = cls.get_role(user, comment.issue.project)
         if role == ProjectRole.ADMIN:
             return True
         return role == ProjectRole.MEMBER and comment.author_id == user.id
 
     @classmethod
-    def can_delete_comment(cls, user: UserType, comment: Comment) -> bool:
+    def can_delete_comment(cls, user: UserType, comment: Comment, role: Optional[str] = None) -> bool:
         """Author, Global Admin, or Project Admin can delete a comment."""
-        return cls.can_edit_comment(user, comment)
+        return cls.can_edit_comment(user, comment, role=role)
 
     # -------------------------------------------------------------------------
     # Attachment Permissions
@@ -202,16 +217,19 @@ class PermissionService:
     @classmethod
     def can_upload_attachment(cls, user: UserType, issue: Issue) -> bool:
         """Global Admins, Project Admins, and Members can upload attachments."""
+        if issue.is_deleted:
+            return False
         return cls.can_create_issue(user, issue.project)
 
     @classmethod
-    def can_delete_attachment(cls, user: UserType, attachment: IssueAttachment) -> bool:
+    def can_delete_attachment(
+        cls, user: UserType, attachment: IssueAttachment, role: Optional[str] = None
+    ) -> bool:
         """Uploader, Global Admin, or Project Admin can delete an attachment."""
-        if not user or not user.is_authenticated:
+        if not user or not user.is_authenticated or attachment.issue.is_deleted:
             return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, attachment.issue.project):
-            return True
-        role = cls.get_role(user, attachment.issue.project)
+        if role is None:
+            role = cls.get_role(user, attachment.issue.project)
         if role == ProjectRole.ADMIN:
             return True
         return role == ProjectRole.MEMBER and attachment.uploaded_by_id == user.id

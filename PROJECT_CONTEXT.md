@@ -141,7 +141,7 @@ antidote-ng/
         │       └── Index.vue          # Globale Userverwaltung mit Projekt-Zugriffsmatrix
         ├── Auth/
         │   ├── Login.vue              # Sign-In Maske (Username oder E-Mail)
-        │   ├── Register.vue           # Registrierungsmaske (inkl. Einladungs-Auto-Join)
+        │   ├── Register.vue           # Registrierung nur per Einladungslink (inkl. Auto-Join)
         │   ├── InviteAccept.vue       # Einladungs-Landingpage
         │   └── InviteExpired.vue      # Fehlerseite für ungültige/abgelaufene Tokens
         ├── Projects/
