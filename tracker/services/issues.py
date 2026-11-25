@@ -4,7 +4,6 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.paginator import Paginator
-from django.db import transaction
 from django.db.models import Q
 
 from tracker.models.project import Project
@@ -15,6 +14,8 @@ from tracker.services.permissions import PermissionService
 from tracker.services.activity import ActivityService
 from tracker.services.comments import CommentService
 from tracker.services.attachments import AttachmentService
+from tracker.services.projects import ProjectService
+from tracker.services.transactions import run_write_transaction
 
 User = get_user_model()
 
@@ -42,44 +43,46 @@ class IssueService:
         """
         Create a new issue atomically with sequential key allocation and activity logging.
         """
-        if not PermissionService.can_create_issue(reporter, project):
-            raise PermissionDenied("You do not have permission to create issues in this project.")
+        def create() -> Issue:
+            if not PermissionService.can_create_issue(reporter, project):
+                raise PermissionDenied("You do not have permission to create issues in this project.")
 
-        title = title.strip()
-        if not title:
-            raise ValidationError({"title": "Issue title cannot be empty."})
+            issue_title = cls._clean_title(title)
 
-        if type not in IssueType.values:
-            raise ValidationError({"type": f"Invalid issue type '{type}'."})
+            if type not in IssueType.values:
+                raise ValidationError({"type": f"Invalid issue type '{type}'."})
 
-        if status not in IssueStatus.values:
-            raise ValidationError({"status": f"Invalid issue status '{status}'."})
+            if status not in IssueStatus.values:
+                raise ValidationError({"status": f"Invalid issue status '{status}'."})
 
-        if priority not in IssuePriority.values:
-            raise ValidationError({"priority": f"Invalid issue priority '{priority}'."})
+            if priority not in IssuePriority.values:
+                raise ValidationError({"priority": f"Invalid issue priority '{priority}'."})
 
-        if assignee is not None and not PermissionService.can_assign_issue_to(assignee, project):
-            raise ValidationError({"assignee": "Assignee must be a project member."})
+            if assignee is not None and not PermissionService.can_assign_issue_to(assignee, project):
+                raise ValidationError({"assignee": "Assignee must be a project member."})
 
-        with transaction.atomic():
-            # Atomically generate the next sequential number & key under row lock
-            number, key = IssueKeyService.generate_next_number_and_key(project.id)
+            try:
+                number, key = IssueKeyService.generate_next_number_and_key(project.id)
+            except Project.DoesNotExist as exc:
+                raise PermissionDenied("This project is no longer available.") from exc
+            if not PermissionService.can_create_issue(reporter, project):
+                raise PermissionDenied("You do not have permission to create issues in this project.")
 
-            # If position is not specified, place at the bottom of the column
-            if position is None:
+            issue_position = position
+            if issue_position is None:
                 max_pos = (
                     Issue.objects.filter(project=project, status=status, is_deleted=False)
                     .order_by("-position")
                     .values_list("position", flat=True)
                     .first()
                 )
-                position = (max_pos + 1) if max_pos is not None else 0
+                issue_position = (max_pos + 1) if max_pos is not None else 0
 
             issue = Issue.objects.create(
                 project=project,
                 number=number,
                 key=key,
-                title=title,
+                title=issue_title,
                 description=description.strip(),
                 type=type,
                 status=status,
@@ -87,13 +90,15 @@ class IssueService:
                 reporter=reporter,
                 assignee=assignee,
                 due_date=due_date,
-                position=position,
+                position=issue_position,
             )
 
             # Record creation in activity log
             ActivityService.log_issue_created(issue=issue, actor=reporter)
 
             return issue
+
+        return run_write_transaction(create)
 
     @classmethod
     def update_issue(
@@ -106,9 +111,6 @@ class IssueService:
         Update issue fields, enforcing permissions and logging field-level modifications.
         A status change places the issue at the bottom of the target Kanban column.
         """
-        if not PermissionService.can_edit_issue(actor, issue):
-            raise PermissionDenied("You do not have permission to edit this issue.")
-
         allowed_fields = {
             "title",
             "description",
@@ -119,18 +121,17 @@ class IssueService:
             "due_date",
         }
         fields = {name: value for name, value in fields.items() if name in allowed_fields}
-        cls._validate_issue_fields(issue.project, fields)
+        def update() -> Issue:
+            cls._lock_issue_state(issue)
+            if not PermissionService.can_edit_issue(actor, issue):
+                raise PermissionDenied("You do not have permission to edit this issue.")
+            cls._validate_issue_fields(issue.project, fields)
+            if "description" in fields:
+                fields["description"] = (fields["description"] or "").strip()
 
-        if "title" in fields:
-            fields["title"] = fields["title"].strip()
-        if "description" in fields:
-            fields["description"] = (fields["description"] or "").strip()
-
-        changes: Dict[str, Tuple[Any, Any]] = {}
-        changed_field_names: List[str] = []
-        old_status = issue.status
-
-        with transaction.atomic():
+            changes: Dict[str, Tuple[Any, Any]] = {}
+            changed_field_names: List[str] = []
+            old_status = issue.status
             for field, new_val in fields.items():
                 old_val = getattr(issue, field)
                 if old_val == new_val:
@@ -150,15 +151,33 @@ class IssueService:
                 if issue.status != old_status:
                     cls._reposition_issue(issue, old_status=old_status, new_position=None)
                 ActivityService.log_field_changes(issue=issue, actor=actor, changes=changes)
+            return issue
 
-        return issue
+        return run_write_transaction(update)
+
+    @staticmethod
+    def _clean_title(value: Any) -> str:
+        """Normalisiert den Titel und verwendet die Längenprüfung des Modells."""
+        if not isinstance(value, str):
+            raise ValidationError({"title": "Enter a valid issue title."})
+        title = value.strip()
+        if not title:
+            raise ValidationError({"title": "Issue title cannot be empty."})
+        try:
+            Issue._meta.get_field("title").run_validators(title)
+        except ValidationError as exc:
+            raise ValidationError({"title": exc.messages}) from exc
+        return title
 
     @classmethod
     def _validate_issue_fields(cls, project: Project, fields: Dict[str, Any]) -> None:
-        """Validate choice fields, title and assignee of an issue update payload."""
-        errors: Dict[str, str] = {}
-        if "title" in fields and not str(fields["title"] or "").strip():
-            errors["title"] = "Issue title cannot be empty."
+        """Prüft und normalisiert die Felder eines Issue-Updates."""
+        errors: Dict[str, str | List[str]] = {}
+        if "title" in fields:
+            try:
+                fields["title"] = cls._clean_title(fields["title"])
+            except ValidationError as exc:
+                errors["title"] = exc.messages
         if "type" in fields and fields["type"] not in IssueType.values:
             errors["type"] = f"Invalid issue type '{fields['type']}'."
         if "status" in fields and fields["status"] not in IssueStatus.values:
@@ -186,15 +205,13 @@ class IssueService:
         by Sortable.js). Target and source columns are renumbered densely (0..n-1), so stored
         positions always match the visible order.
         """
-        if not PermissionService.can_edit_issue(actor, issue):
-            raise PermissionDenied("You do not have permission to move this issue.")
-
-        if new_status not in IssueStatus.values:
-            raise ValidationError({"status": f"Invalid status '{new_status}'."})
-
-        old_status = issue.status
-
-        with transaction.atomic():
+        def move() -> Issue:
+            cls._lock_issue_state(issue)
+            if not PermissionService.can_edit_issue(actor, issue):
+                raise PermissionDenied("You do not have permission to move this issue.")
+            if new_status not in IssueStatus.values:
+                raise ValidationError({"status": f"Invalid status '{new_status}'."})
+            old_status = issue.status
             issue.status = new_status
             issue.save(update_fields=["status", "updated_at"])
             cls._reposition_issue(issue, old_status=old_status, new_position=new_position)
@@ -203,8 +220,19 @@ class IssueService:
                 ActivityService.log_status_change(
                     issue=issue, actor=actor, old_status=old_status, new_status=new_status
                 )
+            return issue
 
-        return issue
+        return run_write_transaction(move)
+
+    @staticmethod
+    def _lock_issue_state(issue: Issue) -> None:
+        """Sperrt wie die Nummernvergabe zuerst das Projekt und liest danach den Issue-Zustand."""
+        try:
+            project = Project.objects.select_for_update().get(pk=issue.project_id, archived_at__isnull=True)
+            issue.refresh_from_db(from_queryset=Issue.objects.filter(project=project))
+        except (Project.DoesNotExist, Issue.DoesNotExist) as exc:
+            raise PermissionDenied("This issue is no longer available.") from exc
+        issue.project = project
 
     @classmethod
     def _column_issue_ids(cls, project: Project, status: str, exclude_pk: Optional[int] = None) -> List[int]:
@@ -249,10 +277,12 @@ class IssueService:
     @classmethod
     def soft_delete_issue(cls, issue: Issue, actor: AbstractBaseUser) -> Issue:
         """Soft-delete an issue and create an audit log entry."""
-        if not PermissionService.can_delete_issue(actor, issue):
-            raise PermissionDenied("You do not have permission to delete this issue.")
-
-        with transaction.atomic():
+        def delete() -> Issue:
+            cls._lock_issue_state(issue)
+            if not PermissionService.can_delete_issue(actor, issue):
+                raise PermissionDenied("You do not have permission to delete this issue.")
+            if issue.is_deleted:
+                return issue
             issue.soft_delete()
             ActivityService.log_activity(
                 issue=issue,
@@ -260,15 +290,19 @@ class IssueService:
                 action=ActivityAction.SOFT_DELETED,
                 new_value="Issue soft-deleted",
             )
-        return issue
+            return issue
+
+        return run_write_transaction(delete)
 
     @classmethod
     def restore_issue(cls, issue: Issue, actor: AbstractBaseUser) -> Issue:
         """Restore a previously soft-deleted issue."""
-        if not PermissionService.can_delete_issue(actor, issue):
-            raise PermissionDenied("You do not have permission to restore this issue.")
-
-        with transaction.atomic():
+        def restore() -> Issue:
+            cls._lock_issue_state(issue)
+            if not PermissionService.can_delete_issue(actor, issue):
+                raise PermissionDenied("You do not have permission to restore this issue.")
+            if not issue.is_deleted:
+                return issue
             issue.restore()
             ActivityService.log_activity(
                 issue=issue,
@@ -276,7 +310,9 @@ class IssueService:
                 action=ActivityAction.RESTORED,
                 new_value="Issue restored",
             )
-        return issue
+            return issue
+
+        return run_write_transaction(restore)
 
     @classmethod
     def get_project_kanban_board_data(
@@ -386,13 +422,12 @@ class IssueService:
 
         comments = CommentService.get_issue_comments(issue, actor)
         attachments = AttachmentService.get_issue_attachments(issue, actor)
-        activity_logs = ActivityService.get_issue_activity_timeline(issue)
-
         return {
-            "issue": cls._serialize_issue_full(issue),
+            "issue": cls._serialize_issue_full(issue, actor),
             "comments": comments,
             "attachments": attachments,
-            "activity_logs": activity_logs,
+            "activity_count": issue.activity_logs.count(),
+            "attachment_policy": AttachmentService.get_upload_policy(),
             "permissions": {
                 "can_edit": PermissionService.can_edit_issue(actor, issue),
                 "can_delete": PermissionService.can_delete_issue(actor, issue),
@@ -430,7 +465,7 @@ class IssueService:
         }
 
     @classmethod
-    def _serialize_issue_full(cls, issue: Issue) -> Dict[str, Any]:
+    def _serialize_issue_full(cls, issue: Issue, actor: AbstractBaseUser) -> Dict[str, Any]:
         """Comprehensive serialization for detail views / slide-overs."""
         card = cls._serialize_issue_card(issue)
         card.update({
@@ -438,11 +473,6 @@ class IssueService:
             "is_deleted": issue.is_deleted,
             "deleted_at": issue.deleted_at.isoformat() if issue.deleted_at else None,
             "updated_at": issue.updated_at.isoformat(),
-            "project": {
-                "id": issue.project.id,
-                "name": issue.project.name,
-                "slug": issue.project.slug,
-                "key": issue.project.key,
-            },
+            "project": ProjectService.get_project_navigation_data(issue.project, actor),
         })
         return card

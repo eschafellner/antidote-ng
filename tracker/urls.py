@@ -57,6 +57,7 @@ urlpatterns = [
     path("projects/<slug:slug>/issues/", views.issue_list_view, name="issue_list"),
     path("projects/<slug:slug>/issues/new/", views.issue_create_view, name="issue_create"),
     path("projects/<slug:slug>/issues/<str:key>/", views.issue_detail_view, name="issue_detail"),
+    path("projects/<slug:slug>/issues/<str:key>/activity/", views.issue_activity_view, name="issue_activity"),
     path("projects/<slug:slug>/issues/<str:key>/update/", views.issue_update_view, name="issue_update"),
     path("projects/<slug:slug>/issues/<str:key>/move/", views.issue_move_view, name="issue_move"),
     path("projects/<slug:slug>/issues/<str:key>/delete/", views.issue_delete_view, name="issue_delete"),

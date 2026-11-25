@@ -73,6 +73,22 @@ class ProjectViewsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Project key must consist of 2 to 10 uppercase alphanumeric characters")
 
+    def test_project_name_limit_and_slug_collision(self) -> None:
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse("project_create"), {"name": "a" * 256, "key": "LONG"})
+        self.assertContains(response, "255")
+        self.assertFalse(Project.objects.filter(key="LONG").exists())
+
+        for key in ("SAME", "SAME2"):
+            self.client.post(reverse("project_create"), {"name": "a" * 255, "key": key})
+        self.assertEqual(Project.objects.get(key="SAME").slug, "a" * 255)
+        self.assertEqual(Project.objects.get(key="SAME2").slug, "a" * 253 + "-1")
+
+        self.client.post(reverse("project_update", kwargs={"slug": self.project.slug}), {"name": "b" * 256})
+        self.assertIn("name", self.client.session["_inertia_errors"])
+        self.project.refresh_from_db()
+        self.assertEqual(self.project.name, "Main Project")
+
     def test_project_detail_view_permitted_for_member(self) -> None:
         """Verify member can access project detail view."""
         self.client.force_login(self.member)
@@ -107,8 +123,8 @@ class ProjectViewsTests(TestCase):
         self.assertEqual(self.project.name, "Updated Name")
         self.assertEqual(self.project.description, "Updated Description")
 
-    def test_project_delete_view_admin_only(self) -> None:
-        """Verify Admin can delete project, while Member is rejected with 403."""
+    def test_project_archive_view_owner_only(self) -> None:
+        """Der Eigentümer kann das Projekt archivieren. Member erhalten HTTP 403."""
         self.client.force_login(self.member)
         response = self.client.post(reverse("project_delete", kwargs={"slug": self.project.slug}))
         self.assertEqual(response.status_code, 403)
@@ -116,4 +132,6 @@ class ProjectViewsTests(TestCase):
         self.client.force_login(self.owner)
         response = self.client.post(reverse("project_delete", kwargs={"slug": self.project.slug}))
         self.assertRedirects(response, reverse("project_list"))
-        self.assertFalse(Project.objects.filter(id=self.project.id).exists())
+        self.project.refresh_from_db()
+        self.assertIsNotNone(self.project.archived_at)
+        self.assertEqual(self.client.get(reverse("project_board", kwargs={"slug": self.project.slug})).status_code, 404)

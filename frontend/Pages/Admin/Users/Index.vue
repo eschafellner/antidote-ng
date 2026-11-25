@@ -318,10 +318,7 @@ const deleteUser = user => {
 
                 <!-- Project Access -->
                 <td class="px-3 py-3.5">
-                  <div v-if="u.is_global_admin" class="text-xs text-indigo-700 font-medium flex items-center gap-1">
-                    <span>All projects (Superuser access)</span>
-                  </div>
-                  <div v-else-if="u.memberships.length > 0" class="flex flex-wrap gap-1.5 max-w-sm">
+                  <div v-if="u.memberships.length > 0" class="flex flex-wrap gap-1.5 max-w-sm">
                     <span
                       v-for="m in u.memberships"
                       :key="m.project_id"
@@ -333,7 +330,7 @@ const deleteUser = user => {
                     </span>
                   </div>
                   <span v-else class="text-xs text-slate-400 italic">
-                    No assigned projects
+                    No visible project memberships
                   </span>
                 </td>
 
@@ -468,13 +465,13 @@ const deleteUser = user => {
                   />
                   <div>
                     <span class="text-xs font-bold text-slate-900 block">Grant Global Admin Privileges</span>
-                    <span class="text-[11px] text-slate-500">Global admins have unrestricted access to all projects and user management.</span>
+                    <span class="text-[11px] text-slate-500">Global admins can manage user accounts. Project access follows project memberships.</span>
                   </div>
                 </label>
               </div>
 
               <!-- Initial Project Access Matrix -->
-              <div v-if="!createForm.is_global_admin && projects.length > 0" class="pt-3 border-t border-slate-100 space-y-3">
+              <div v-if="projects.length > 0" class="pt-3 border-t border-slate-100 space-y-3">
                 <h4 class="text-xs font-bold uppercase tracking-wider text-slate-700">Assign Project Roles</h4>
                 <div class="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden max-h-48 overflow-y-auto">
                   <div
@@ -497,6 +494,9 @@ const deleteUser = user => {
                   </div>
                 </div>
               </div>
+              <p v-if="createForm.errors.project_access" class="text-xs text-rose-600">
+                {{ createForm.errors.project_access }}
+              </p>
             </div>
 
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl">
@@ -662,7 +662,7 @@ const deleteUser = user => {
           <form @submit.prevent="submitAccessModal">
             <div class="p-6 space-y-4 max-h-[60vh] overflow-y-auto">
               <div v-if="selectedUser.is_global_admin" class="p-3.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs text-indigo-800">
-                <strong>Note:</strong> This user is a <strong>Global Admin</strong> and inherently has full admin privileges across all projects. You can still set explicit project roles below for auditing.
+                This user is a <strong>Global Admin</strong>. Their project access follows the roles assigned below.
               </div>
 
               <div class="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden">
@@ -690,9 +690,12 @@ const deleteUser = user => {
                 </div>
 
                 <div v-if="accessForm.project_roles.length === 0" class="p-6 text-center text-xs text-slate-400 italic">
-                  No projects exist in the system yet.
+                  No projects to manage.
                 </div>
               </div>
+              <p v-if="accessForm.errors.project_access" class="text-xs text-rose-600">
+                {{ accessForm.errors.project_access }}
+              </p>
             </div>
 
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 rounded-b-2xl">

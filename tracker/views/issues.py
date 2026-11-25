@@ -8,13 +8,17 @@ from django.http import HttpRequest, HttpResponse, JsonResponse, Http404
 from django.shortcuts import redirect, get_object_or_404
 from django.urls import reverse
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.cache import never_cache
 import inertia
 
 from tracker.models.project import Project
 from tracker.models.issue import Issue, IssueType, IssueStatus, IssuePriority
 from tracker.services.issues import IssueService
+from tracker.services.activity import ActivityService
 from tracker.services.permissions import PermissionService
 from tracker.services.invitations import MembershipService
+from tracker.services.projects import ProjectService
+from tracker.services.transactions import run_write_transaction
 from tracker.views.utils import (
     parse_request_data,
     flash_errors,
@@ -70,15 +74,7 @@ def kanban_board_view(request: HttpRequest, slug: str) -> HttpResponse:
         request,
         "Projects/Board",
         props={
-            "project": {
-                "id": project.id,
-                "name": project.name,
-                "slug": project.slug,
-                "key": project.key,
-                "is_owner": project.owner_id == request.user.id,
-                "user_role": PermissionService.get_role(request.user, project),
-                "can_create_issue": PermissionService.can_create_issue(request.user, project),
-            },
+            "project": ProjectService.get_project_navigation_data(project, request.user),
             "board": board_data,
             "members": members,
         },
@@ -121,14 +117,7 @@ def issue_list_view(request: HttpRequest, slug: str) -> HttpResponse:
         request,
         "Issues/Index",
         props={
-            "project": {
-                "id": project.id,
-                "name": project.name,
-                "slug": project.slug,
-                "key": project.key,
-                "user_role": PermissionService.get_role(request.user, project),
-                "can_create_issue": PermissionService.can_create_issue(request.user, project),
-            },
+            "project": ProjectService.get_project_navigation_data(project, request.user),
             "issues": issues_data["items"],
             "pagination": issues_data["pagination"],
             "filters": issues_data["filters"],
@@ -146,7 +135,6 @@ def issue_create_view(request: HttpRequest, slug: str) -> HttpResponse:
     """
     Create a new issue in the project.
     """
-    project = _get_project_and_check_access(slug, request.user)
     data = parse_request_data(request)
 
     title = data.get("title", "")
@@ -155,7 +143,8 @@ def issue_create_view(request: HttpRequest, slug: str) -> HttpResponse:
     status = data.get("status", IssueStatus.TODO)
     priority = data.get("priority", IssuePriority.MEDIUM)
 
-    try:
+    def create() -> None:
+        project = _get_project_and_check_access(slug, request.user)
         assignee = _get_project_assignee(data["assignee_id"], project) if data.get("assignee_id") else None
         IssueService.create_issue(
             project=project,
@@ -168,9 +157,12 @@ def issue_create_view(request: HttpRequest, slug: str) -> HttpResponse:
             assignee=assignee,
             due_date=_parse_due_date(data.get("due_date")),
         )
+
+    try:
+        run_write_transaction(create)
     except ValidationError as exc:
         flash_errors(request, exc)
-    return redirect_back(request, "project_board", slug=project.slug)
+    return redirect_back(request, "project_board", slug=slug)
 
 
 @login_required
@@ -181,6 +173,7 @@ def issue_detail_view(request: HttpRequest, slug: str, key: str) -> HttpResponse
     """
     issue = _get_issue_and_check_access(slug, key, request.user)
     detail_data = IssueService.get_issue_detail_data(issue=issue, actor=request.user)
+    detail_data["activity_url"] = reverse("issue_activity", kwargs={"slug": slug, "key": key})
     members = MembershipService.get_project_members(project=issue.project, actor=request.user)
 
     return inertia.render(
@@ -194,6 +187,22 @@ def issue_detail_view(request: HttpRequest, slug: str, key: str) -> HttpResponse
             "priorities": [{"value": p[0], "label": p[1]} for p in IssuePriority.choices],
         },
     )
+
+
+@login_required
+@never_cache
+@require_http_methods(["GET"])
+def issue_activity_view(request: HttpRequest, slug: str, key: str) -> JsonResponse:
+    """Lädt eine Seite des Issue-Verlaufs für den Verlaufstab."""
+    issue = _get_issue_and_check_access(slug, key, request.user)
+    raw_before = request.GET.get("before")
+    try:
+        before = int(raw_before) if raw_before is not None else None
+        if before is not None and not 0 < before < 2**63:
+            raise ValueError
+        return JsonResponse(ActivityService.get_issue_activity_page(issue, request.user, before))
+    except (ValidationError, ValueError):
+        return JsonResponse({"error": "Invalid activity cursor."}, status=400)
 
 
 @login_required

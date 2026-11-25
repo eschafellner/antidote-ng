@@ -61,3 +61,5 @@ deploy/docker.env
 .pytest_cache/
 .coverage
 htmlcov/
+playwright-report/
+test-results/

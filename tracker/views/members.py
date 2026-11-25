@@ -8,6 +8,7 @@ import inertia
 from tracker.models.project import Project, ProjectRole
 from tracker.services.permissions import PermissionService
 from tracker.services.invitations import InvitationService, MembershipService
+from tracker.services.projects import ProjectService
 from tracker.views.utils import parse_request_data, format_validation_errors, flash_errors
 
 
@@ -37,13 +38,9 @@ def project_settings_view(request: HttpRequest, slug: str) -> HttpResponse:
         "Projects/Settings",
         props={
             "project": {
-                "id": project.id,
-                "name": project.name,
-                "slug": project.slug,
-                "key": project.key,
+                **ProjectService.get_project_navigation_data(project, request.user),
                 "description": project.description,
-                "is_owner": project.owner_id == request.user.id,
-                "can_delete": PermissionService.can_delete_project(request.user, project),
+                "can_archive": PermissionService.can_archive_project(request.user, project),
             },
             "members": members,
             "invitations": invitations,
@@ -121,13 +118,9 @@ def invitation_create_view(request: HttpRequest, slug: str) -> HttpResponse:
             "Projects/Settings",
             props={
                 "project": {
-                    "id": project.id,
-                    "name": project.name,
-                    "slug": project.slug,
-                    "key": project.key,
+                    **ProjectService.get_project_navigation_data(project, request.user),
                     "description": project.description,
-                    "is_owner": project.owner_id == request.user.id,
-                    "can_delete": PermissionService.can_delete_project(request.user, project),
+                    "can_archive": PermissionService.can_archive_project(request.user, project),
                 },
                 "members": members,
                 "invitations": invitations,

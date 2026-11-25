@@ -22,15 +22,18 @@ const props = defineProps({
   },
 });
 
-// Local reactive columns state for optimistic drag and drop
-const columns = ref({ ...props.board.columns });
+const copyColumns = source =>
+  Object.fromEntries(Object.entries(source).map(([status, issues]) => [status, [...issues]]));
+const columns = ref(copyColumns(props.board.columns));
+const movingCard = ref(false);
+const canMoveCards = computed(() => props.project.can_create_issue === true && !movingCard.value);
+let dragSnapshot = null;
 
 watch(
   () => props.board.columns,
   newCols => {
-    columns.value = { ...newCols };
-  },
-  { deep: true }
+    columns.value = copyColumns(newCols);
+  }
 );
 
 const showCreateModal = ref(false);
@@ -65,41 +68,54 @@ const allIssues = computed(() => {
 
 const totalIssuesCount = computed(() => allIssues.value.length);
 
-/**
- * Handle Drag and Drop card movement with optimistic UI update and rollback.
- */
-const onCardMove = (targetStatus, evt) => {
-  if (evt.added || evt.moved) {
-    const item = evt.added ? evt.added.element : evt.moved.element;
-    const newIndex = evt.added ? evt.added.newIndex : evt.moved.newIndex;
+const captureDragSnapshot = () => {
+  dragSnapshot = copyColumns(columns.value);
+};
 
-    const rollbackSnapshot = JSON.parse(JSON.stringify(columns.value));
+const persistCardMove = (issue, status, position, previousColumns) => {
+  movingCard.value = true;
+  const serverColumns = props.board.columns;
+  let succeeded = false;
 
-    router.post(
-      `/projects/${props.project.slug}/issues/${item.key}/move/`,
-      {
-        status: targetStatus,
-        position: newIndex,
+  router.post(
+    `/projects/${props.project.slug}/issues/${issue.key}/move/`,
+    { status, position },
+    {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => { succeeded = true; },
+      onError: showErrors,
+      onFinish: () => {
+        if (!succeeded) {
+          columns.value = props.board.columns === serverColumns
+            ? previousColumns
+            : copyColumns(props.board.columns);
+        }
+        movingCard.value = false;
       },
-      {
-        preserveScroll: true,
-        preserveState: true,
-        onError: errors => {
-          columns.value = rollbackSnapshot;
-          showErrors(errors);
-        },
-      }
-    );
+    }
+  );
+};
+
+const onCardMove = (targetStatus, evt) => {
+  const change = evt.added || evt.moved;
+  if (!change) return;
+
+  const previousColumns = dragSnapshot || copyColumns(props.board.columns);
+  dragSnapshot = null;
+  if (!canMoveCards.value) {
+    columns.value = previousColumns;
+    return;
   }
+  persistCardMove(change.element, targetStatus, change.newIndex, previousColumns);
 };
 
 /**
  * Handle accessible status change (from keyboard or dropdown menu)
  */
 const handleDirectStatusChange = ({ issue, newStatus }) => {
-  if (issue.status === newStatus) return;
-
-  const rollbackSnapshot = JSON.parse(JSON.stringify(columns.value));
+  if (!canMoveCards.value || issue.status === newStatus) return;
+  const previousColumns = copyColumns(columns.value);
 
   // Optimistically remove from old column
   const oldCol = columns.value[issue.status] || [];
@@ -110,21 +126,7 @@ const handleDirectStatusChange = ({ issue, newStatus }) => {
   if (!columns.value[newStatus]) columns.value[newStatus] = [];
   columns.value[newStatus].push(updatedIssue);
 
-  router.post(
-    `/projects/${props.project.slug}/issues/${issue.key}/move/`,
-    {
-      status: newStatus,
-      position: columns.value[newStatus].length - 1,
-    },
-    {
-      preserveScroll: true,
-      preserveState: true,
-      onError: errors => {
-        columns.value = rollbackSnapshot;
-        showErrors(errors);
-      },
-    }
-  );
+  persistCardMove(issue, newStatus, columns.value[newStatus].length - 1, previousColumns);
 };
 
 // Keyboard Navigation (J / K / Enter / S)
@@ -157,7 +159,7 @@ const handleBoardKeyDown = e => {
   } else if (e.key === 'Enter' && focusedIssueKey.value) {
     e.preventDefault();
     router.visit(`/projects/${props.project.slug}/issues/${focusedIssueKey.value}/`);
-  } else if ((e.key === 's' || e.key === 'S') && focusedIssueKey.value && props.project.can_create_issue !== false) {
+  } else if ((e.key === 's' || e.key === 'S') && focusedIssueKey.value && canMoveCards.value) {
     // Open the status menu of the focused card instead of blindly cycling through statuses
     e.preventDefault();
     statusMenuIssueKey.value = focusedIssueKey.value;
@@ -185,13 +187,13 @@ onUnmounted(() => {
             Kanban Board
           </h1>
           <p class="text-xs text-slate-500 mt-0.5">
-            Manage workflow and drag issues across columns.
+            {{ project.can_create_issue ? 'Manage workflow and drag issues across columns.' : 'View issues and their current status.' }}
           </p>
         </div>
 
         <div class="flex items-center gap-2">
           <button
-            v-if="project.can_create_issue !== false"
+            v-if="project.can_create_issue === true"
             type="button"
             class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg shadow-xs hover:bg-indigo-700 transition-colors"
             @click="openCreateForStatus('todo')"
@@ -215,11 +217,11 @@ onUnmounted(() => {
           </svg>
         </div>
         <h3 class="text-base font-bold text-slate-900 mb-1">Your board is empty</h3>
-        <p class="text-xs text-slate-500 mb-4 max-w-sm">
+        <p v-if="project.can_create_issue === true" class="text-xs text-slate-500 mb-4 max-w-sm">
           Get started by creating your first issue. Press <kbd class="px-1.5 py-0.5 bg-slate-100 border border-slate-300 rounded font-mono text-[10px] text-slate-800 font-semibold">C</kbd> anywhere or click below.
         </p>
         <button
-          v-if="project.can_create_issue !== false"
+          v-if="project.can_create_issue === true"
           type="button"
           class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl shadow-sm hover:bg-indigo-700 transition-colors"
           @click="openCreateForStatus('todo')"
@@ -259,7 +261,7 @@ onUnmounted(() => {
             </div>
 
             <button
-              v-if="project.can_create_issue !== false"
+              v-if="project.can_create_issue === true"
               type="button"
               class="text-slate-400 hover:text-slate-700 p-1 rounded-md transition-colors"
               title="Add issue to this column"
@@ -275,17 +277,20 @@ onUnmounted(() => {
           <draggable
             v-model="columns[col.id]"
             group="issues"
+            :disabled="!canMoveCards"
             item-key="id"
             ghost-class="opacity-40"
             chosen-class="scale-102"
             drag-class="rotate-1"
             class="flex-1 overflow-y-auto space-y-2.5 min-h-[120px] p-0.5"
+            @start="captureDragSnapshot"
             @change="evt => onCardMove(col.id, evt)"
           >
             <template #item="{ element }">
               <IssueCard
                 :issue="element"
                 :project-slug="project.slug"
+                :can-change-status="canMoveCards"
                 :is-focused="focusedIssueKey === element.key"
                 :menu-open="statusMenuIssueKey === element.key"
                 @status-change="handleDirectStatusChange"
@@ -301,7 +306,7 @@ onUnmounted(() => {
               >
                 <p class="text-xs font-medium">No issues in {{ col.label }}</p>
                 <button
-                  v-if="project.can_create_issue !== false"
+                  v-if="project.can_create_issue === true"
                   type="button"
                   class="mt-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
                   @click="openCreateForStatus(col.id)"

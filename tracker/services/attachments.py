@@ -2,6 +2,7 @@ import mimetypes
 import os
 from typing import List, Dict, Any, Optional, Tuple
 from django.contrib.auth.models import AbstractBaseUser
+from django.conf import settings
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 
@@ -23,10 +24,15 @@ INLINE_SAFE_CONTENT_TYPES = frozenset({
 
 
 class AttachmentService:
-    """
-    Service layer handling file attachment uploads, validation, storage deletion, and retrieval.
-    """
+    """Verwaltet Uploads, geschützte Downloads und das Löschen von Anhängen."""
 
+    @staticmethod
+    def get_upload_policy() -> Dict[str, Any]:
+        """Liefert die Upload-Regeln für die Eingabeprüfung im Browser."""
+        return {
+            "max_size_bytes": settings.MAX_ATTACHMENT_SIZE_BYTES,
+            "allowed_extensions": settings.ALLOWED_ATTACHMENT_EXTENSIONS,
+        }
     @classmethod
     def upload_attachment(
         cls,

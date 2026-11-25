@@ -1,8 +1,11 @@
 from typing import Optional, Any, Dict, Tuple, List
 from django.contrib.auth.models import AbstractBaseUser
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.db.models import Q
 
 from tracker.models.issue import Issue
 from tracker.models.activity import ActivityLog, ActivityAction
+from tracker.services.permissions import PermissionService
 
 
 class ActivityService:
@@ -160,16 +163,24 @@ class ActivityService:
         return logs
 
     @classmethod
-    def get_issue_activity_timeline(cls, issue: Issue) -> List[Dict[str, Any]]:
-        """
-        Retrieve formatted activity log timeline for an issue.
-        """
-        activities = (
-            ActivityLog.objects.filter(issue=issue)
-            .select_related("actor")
-            .order_by("-created_at")
-        )
-        return [
+    def get_issue_activity_page(
+        cls, issue: Issue, actor: AbstractBaseUser, before: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Liefert bis zu 20 Verlaufseinträge vor der angegebenen Position."""
+        if not PermissionService.can_view_issue(actor, issue):
+            raise PermissionDenied("You do not have permission to view this issue.")
+        activities = ActivityLog.objects.filter(issue=issue)
+        if before is not None:
+            anchor = activities.filter(pk=before).only("created_at").first()
+            if anchor is None:
+                raise ValidationError("Invalid activity cursor.")
+            activities = activities.filter(
+                Q(created_at__lt=anchor.created_at) | Q(created_at=anchor.created_at, pk__lt=anchor.pk)
+            )
+        page_size = 20
+        rows = list(activities.select_related("actor").order_by("-created_at", "-pk")[:page_size + 1])
+        page = rows[:page_size]
+        items = [
             {
                 "id": act.id,
                 "actor": {
@@ -186,5 +197,6 @@ class ActivityService:
                 "new_value": act.new_value,
                 "created_at": act.created_at.isoformat(),
             }
-            for act in activities
+            for act in page
         ]
+        return {"items": items, "next_before": str(page[-1].pk) if len(rows) > page_size else None}

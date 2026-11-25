@@ -201,6 +201,8 @@ Diese Variante entspricht dem Ablauf von EntailsNG: **eine `.env`-Datei und `doc
 
 **Update:** Im Projektordner `git pull --ff-only` und `docker compose up -d --build` ausführen. `docker compose down --volumes` löscht dagegen die Datenvolumes. Sichere regelmäßig Datenbank und Uploads; nutze bei laufender SQLite-Datenbank die SQLite-Backup-API statt einer einfachen Dateikopie.
 
+Docker startet standardmäßig einen internen Redis-Cache für die Login-Drosselung. Beide Gunicorn-Worker nutzen dieselben Zähler. Für einen vorhandenen Redis-Dienst kann `CACHE_URL` in der Docker-`.env` gesetzt werden.
+
 Wenn auf demselben Rechner zuvor Caddy für Antidote lief, stoppe ihn nach dem Wechsel zum Tunnel mit `docker compose --profile direct stop caddy`. Die Datenbank- und Upload-Volumes bleiben dabei erhalten.
 
 Ein Cloudflare Quick Tunnel mit zufälliger Adresse ist nur für [Weg 2](#3-weg-2-sofort-online-via-cloudflare-tunnel-ohne-serverkauf) gedacht.
@@ -209,9 +211,44 @@ Ein Cloudflare Quick Tunnel mit zufälliger Adresse ist nur für [Weg 2](#3-weg-
 
 Wenn du Cloudflare Tunnel nicht verwendest, kann Caddy die öffentliche Domain und HTTPS direkt bereitstellen. Setze dafür in derselben `.env`-Datei `COMPOSE_FILE=compose.yaml`; `TUNNEL_TOKEN` kann leer bleiben. Der DNS-A-Record deiner Domain muss auf den VPS zeigen und die Ports 80/443 müssen frei und erreichbar sein. Starte dann ebenfalls mit `docker compose up -d --build`. Caddy beschafft und erneuert das HTTPS-Zertifikat automatisch. `docker compose logs -f app caddy` zeigt die Logs.
 
+Caddy berechnet sein Request-Limit aus `MAX_ATTACHMENT_SIZE_BYTES` und lässt Platz für die Formulardaten. Bei einem manuellen Nginx-Setup passe `client_max_body_size` an, wenn du das Upload-Limit erhöhst.
+
 Wenn du von einem laufenden Tunnel auf Caddy wechselst, stoppe den bisherigen Tunnel vor dem Start mit `docker compose -f compose.yaml -f compose.tunnel.yaml stop cloudflared`. Die Datenvolumes werden dadurch nicht gelöscht.
 
 **Bestehende Installation:** Docker übernimmt die Datenbank und Uploads aus `/var/www/antidote/` nicht automatisch. Plane vor einem Wechsel eine gesonderte Datenmigration mit Backup. Stoppe einen vorhandenen Nginx-Dienst, bevor Caddy die Ports 80/443 belegt. Bestehende Docker-Installationen mit `deploy/docker.env` und explizitem `--env-file` können ihre bisherigen Befehle weiter verwenden.
+
+### SQLite sichern und die Rücksicherung prüfen
+
+Halte die App während der Sicherung an, damit Datenbank und Anhangsdateien denselben Stand haben. Der Sicherungsbefehl verwendet die SQLite-Backup-API und kopiert die Anhänge in dasselbe neue Verzeichnis.
+
+```bash
+docker compose stop app
+docker compose run --no-deps --name antidote-snapshot --entrypoint python app \
+  manage.py backup_sqlite /tmp/antidote-backup
+docker cp antidote-snapshot:/tmp/antidote-backup ./antidote-backup
+docker rm antidote-snapshot
+docker compose start app
+```
+
+Für eine Installation ohne Docker hältst du den App-Dienst an und führst `python manage.py backup_sqlite /absoluter/pfad/zur/neuen-sicherung` mit der Konfiguration dieser Installation aus. Bei PostgreSQL sichere die Datenbank mit `pg_dump` und kopiere die Uploads im selben Wartungsfenster.
+
+Spiele das SQLite-Backup zuerst in ein leeres Testverzeichnis ein und starte die Testinstanz nur auf dem Loopback-Interface.
+
+```bash
+test_root="$(mktemp -d)"
+cp ./antidote-backup/db.sqlite3 "$test_root/db.sqlite3"
+cp -a ./antidote-backup/media "$test_root/media"
+export DATABASE_URL="sqlite:///$test_root/db.sqlite3"
+export MEDIA_ROOT="$test_root/media"
+export CACHE_URL=locmemcache://
+export ALLOWED_HOSTS=127.0.0.1,localhost
+export DEBUG=True
+npm run build
+python manage.py migrate --noinput
+python manage.py runserver --noreload 127.0.0.1:8010
+```
+
+Melde dich in der Testinstanz an, öffne ein vorhandenes Issue und lade einen Anhang herunter. Vergleiche die Datei mit dem Original und prüfe, ob der Issue-Verlauf angezeigt wird.
 
 ### Alternative: Manuelles Setup ohne Docker
 

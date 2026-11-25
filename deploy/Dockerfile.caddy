@@ -1,3 +1,7 @@
 FROM caddy:2-alpine
 
 COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY --chmod=755 deploy/caddy-entrypoint.sh /usr/local/bin/antidote-caddy
+
+ENTRYPOINT ["/usr/local/bin/antidote-caddy"]
+CMD ["caddy", "run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

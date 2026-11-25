@@ -1,12 +1,43 @@
 <script setup>
-import UserAvatar from './UserAvatar.vue';
+import { onMounted, onUnmounted, ref } from 'vue';
 
-defineProps({
-  activities: {
-    type: Array,
-    default: () => [],
+const props = defineProps({
+  url: {
+    type: String,
+    required: true,
   },
 });
+
+const activities = ref([]);
+const nextBefore = ref(null);
+const loading = ref(false);
+const failed = ref(false);
+const controller = new AbortController();
+
+const loadPage = async () => {
+  if (loading.value) return;
+  loading.value = true;
+  failed.value = false;
+  try {
+    const url = new URL(props.url, window.location.origin);
+    if (nextBefore.value) url.searchParams.set('before', nextBefore.value);
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: { Accept: 'application/json' },
+    });
+    if (!response.ok) throw new Error('Activity could not be loaded.');
+    const page = await response.json();
+    activities.value.push(...page.items);
+    nextBefore.value = page.next_before;
+  } catch (error) {
+    if (error.name !== 'AbortError') failed.value = true;
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(loadPage);
+onUnmounted(() => controller.abort());
 
 const formatTime = dateStr => {
   const date = new Date(dateStr);
@@ -86,8 +117,18 @@ const formatTime = dateStr => {
       </div>
     </div>
 
-    <div v-else class="text-xs text-slate-400 italic py-2">
+    <div v-else-if="!loading && !failed" class="text-xs text-slate-400 italic py-2">
       No activity recorded yet.
     </div>
+    <p v-if="loading" role="status" class="text-xs text-slate-500">Loading activity…</p>
+    <p v-if="failed" role="alert" class="text-xs text-rose-600">Activity could not be loaded.</p>
+    <button
+      v-if="!loading && (nextBefore || failed)"
+      type="button"
+      class="px-3 py-1.5 text-xs font-medium text-slate-700 rounded-lg border border-slate-200 hover:bg-slate-50"
+      @click="loadPage"
+    >
+      {{ failed ? 'Retry' : 'Load older activity' }}
+    </button>
   </div>
 </template>

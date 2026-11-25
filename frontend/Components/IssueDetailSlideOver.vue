@@ -1,6 +1,6 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, useForm } from '@inertiajs/vue3';
 import UserAvatar from './UserAvatar.vue';
 import IssueStatusBadge from './IssueStatusBadge.vue';
 import IssuePriorityBadge from './IssuePriorityBadge.vue';
@@ -63,10 +63,11 @@ const { showErrors } = useToast();
 
 const issue = computed(() => props.detail.issue);
 const permissions = computed(() => props.detail.permissions || {});
+const updateUrl = computed(() => `/projects/${issue.value.project.slug}/issues/${issue.value.key}/update/`);
 
 // Inline editing states
 const isEditingTitle = ref(false);
-const editTitle = ref(issue.value.title);
+const titleForm = useForm({ title: issue.value.title });
 
 const isEditingDescription = ref(false);
 const editDescription = ref(issue.value.description || '');
@@ -76,7 +77,6 @@ const activeTab = ref('comments'); // 'comments' | 'attachments' | 'activity'
 watch(
   () => issue.value,
   newVal => {
-    editTitle.value = newVal.title;
     editDescription.value = newVal.description || '';
   },
   { deep: true }
@@ -87,14 +87,13 @@ const updateField = (fieldName, value) => {
   payload[fieldName] = value;
 
   router.post(
-    `/projects/${issue.value.project.slug}/issues/${issue.value.key}/update/`,
+    updateUrl.value,
     payload,
     {
       preserveScroll: true,
       preserveState: true,
       onError: errors => {
         // Reset local edit buffers to the persisted values
-        editTitle.value = issue.value.title;
         editDescription.value = issue.value.description || '';
         showErrors(errors);
       },
@@ -102,11 +101,22 @@ const updateField = (fieldName, value) => {
   );
 };
 
+const openTitleEditor = () => {
+  titleForm.defaults('title', issue.value.title);
+  titleForm.resetAndClearErrors();
+  isEditingTitle.value = true;
+};
+
 const saveTitle = () => {
-  if (editTitle.value.trim() && editTitle.value !== issue.value.title) {
-    updateField('title', editTitle.value.trim());
+  if (titleForm.processing) return;
+  if (titleForm.title.trim() === issue.value.title) {
+    isEditingTitle.value = false;
+    return;
   }
-  isEditingTitle.value = false;
+  titleForm.post(updateUrl.value, {
+    preserveScroll: true,
+    onSuccess: () => { isEditingTitle.value = false; },
+  });
 };
 
 const saveDescription = () => {
@@ -215,15 +225,19 @@ const restoreIssue = () => {
         <div>
           <div v-if="isEditingTitle && permissions.can_edit" class="flex items-center gap-2">
             <input
-              v-model="editTitle"
+              v-model="titleForm.title"
               type="text"
               autofocus
+              :disabled="titleForm.processing"
+              :aria-invalid="Boolean(titleForm.errors.title)"
+              :aria-describedby="titleForm.errors.title ? 'issue-title-error' : undefined"
               class="w-full rounded-xl border-indigo-500 font-bold text-lg text-slate-900 focus:ring-2 focus:ring-indigo-500/20 px-3.5 py-2"
               @keyup.enter="saveTitle"
               @keyup.esc="isEditingTitle = false"
             />
             <button
               type="button"
+              :disabled="titleForm.processing"
               class="px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors"
               @click="saveTitle"
             >
@@ -244,10 +258,13 @@ const restoreIssue = () => {
               permissions.can_edit ? 'hover:bg-slate-50 cursor-pointer rounded-lg p-1.5 -ml-1.5 transition-colors' : '',
             ]"
             title="Click to edit title"
-            @click="permissions.can_edit && (isEditingTitle = true)"
+            @click="permissions.can_edit && openTitleEditor()"
           >
             {{ issue.title }}
           </h1>
+          <p v-if="isEditingTitle && titleForm.errors.title" id="issue-title-error" class="mt-1.5 text-xs text-rose-600">
+            {{ titleForm.errors.title }}
+          </p>
         </div>
 
         <!-- Inline Attributes Grid: Status, Priority, Type, Assignee, Due Date -->
@@ -433,7 +450,7 @@ const restoreIssue = () => {
             >
               Activity Log
               <span class="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-100 text-slate-600">
-                {{ detail.activity_logs?.length || 0 }}
+                {{ detail.activity_count }}
               </span>
             </button>
           </div>
@@ -453,12 +470,13 @@ const restoreIssue = () => {
               :project-slug="issue.project.slug"
               :issue-key="issue.key"
               :attachments="detail.attachments"
+              :upload-policy="detail.attachment_policy"
               :can-upload="permissions.can_upload"
             />
           </div>
 
-          <div v-show="activeTab === 'activity'">
-            <ActivityTimeline :activities="detail.activity_logs" />
+          <div v-if="activeTab === 'activity'">
+            <ActivityTimeline :key="`${detail.activity_url}:${detail.activity_count}`" :url="detail.activity_url" />
           </div>
         </div>
       </div>

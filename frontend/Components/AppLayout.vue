@@ -18,6 +18,7 @@ const props = defineProps({
 
 const page = usePage();
 const currentUser = computed(() => page.props.auth?.user);
+const canCreateIssue = computed(() => props.project?.can_create_issue === true);
 
 const showCreateModal = ref(false);
 const showShortcutsModal = ref(false);
@@ -63,7 +64,7 @@ const handleGlobalKeyDown = (e) => {
   if (isInput) return;
 
   if ((e.key === 'c' || e.key === 'C') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-    if (props.project && (currentUser.value?.is_global_admin || props.project.can_create_issue !== false)) {
+    if (canCreateIssue.value) {
       e.preventDefault();
       showCreateModal.value = true;
     }
@@ -171,7 +172,7 @@ const isUsersActive = computed(() => currentPath.value.includes('/users'));
             </Link>
 
             <Link
-              v-if="currentUser?.is_global_admin || project.is_owner || project.user_role === 'admin'"
+              v-if="project.user_role === 'admin'"
               :href="`/projects/${project.slug}/settings/`"
               :class="[
                 'px-3 py-1.5 text-xs font-semibold rounded-md transition-colors flex items-center gap-1.5',
@@ -191,7 +192,7 @@ const isUsersActive = computed(() => currentPath.value.includes('/users'));
           <!-- Right side: Create button, Shortcuts helper & User dropdown -->
           <div class="flex items-center gap-2 sm:gap-3">
             <button
-              v-if="project && (currentUser?.is_global_admin || project.can_create_issue !== false)"
+              v-if="canCreateIssue"
               type="button"
               class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 rounded-lg shadow-xs hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors"
               title="Create new issue (Press C)"
@@ -349,11 +350,11 @@ const isUsersActive = computed(() => currentPath.value.includes('/users'));
         </div>
 
         <div class="space-y-2.5 text-xs text-slate-700">
-          <div class="flex items-center justify-between py-1 border-b border-slate-50">
+          <div v-if="canCreateIssue" class="flex items-center justify-between py-1 border-b border-slate-50">
             <span class="font-medium">Create New Issue</span>
             <kbd class="px-2 py-1 bg-slate-100 text-slate-800 font-mono rounded border border-slate-200">C</kbd>
           </div>
-          <div class="flex items-center justify-between py-1 border-b border-slate-50">
+          <div v-if="canCreateIssue" class="flex items-center justify-between py-1 border-b border-slate-50">
             <span class="font-medium">Save Issue / Submit Form</span>
             <kbd class="px-2 py-1 bg-slate-100 text-slate-800 font-mono rounded border border-slate-200">Cmd / Ctrl + Enter</kbd>
           </div>
@@ -361,7 +362,7 @@ const isUsersActive = computed(() => currentPath.value.includes('/users'));
             <span class="font-medium">Navigate Cards on Board</span>
             <kbd class="px-2 py-1 bg-slate-100 text-slate-800 font-mono rounded border border-slate-200">J / K</kbd>
           </div>
-          <div class="flex items-center justify-between py-1 border-b border-slate-50">
+          <div v-if="canCreateIssue && isBoardActive" class="flex items-center justify-between py-1 border-b border-slate-50">
             <span class="font-medium">Open Status Menu of Focused Card</span>
             <kbd class="px-2 py-1 bg-slate-100 text-slate-800 font-mono rounded border border-slate-200">S</kbd>
           </div>

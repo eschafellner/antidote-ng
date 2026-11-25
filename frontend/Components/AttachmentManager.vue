@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { useForm, router } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -15,6 +15,10 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  uploadPolicy: {
+    type: Object,
+    required: true,
+  },
   canUpload: {
     type: Boolean,
     default: true,
@@ -29,21 +33,24 @@ const form = useForm({
   file: null,
 });
 
-const allowedExtensions = ['pdf', 'txt', 'md', 'csv', 'json', 'docx', 'xlsx', 'zip', 'log', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'];
-const maxSizeBytes = 10 * 1024 * 1024; // 10MB
+const allowedExtensions = computed(() => props.uploadPolicy.allowed_extensions);
+const maxSizeBytes = computed(() => props.uploadPolicy.max_size_bytes);
+const acceptedFiles = computed(() => allowedExtensions.value.map(ext => `.${ext}`).join(','));
+const uploadSizeLabel = computed(() => formatSize(maxSizeBytes.value));
 
 const validateAndUpload = file => {
   uploadError.value = '';
   if (!file) return;
 
-  const ext = file.name.split('.').pop().toLowerCase();
-  if (!allowedExtensions.includes(ext)) {
-    uploadError.value = `File type '.${ext}' is not allowed. Supported: ${allowedExtensions.join(', ')}`;
+  const lastDot = file.name.lastIndexOf('.');
+  const ext = lastDot > 0 ? file.name.slice(lastDot + 1).toLowerCase() : '';
+  if (!allowedExtensions.value.includes(ext)) {
+    uploadError.value = `File type is not allowed. Supported: ${allowedExtensions.value.join(', ')}`;
     return;
   }
 
-  if (file.size > maxSizeBytes) {
-    uploadError.value = `File exceeds max allowed size of 10 MB.`;
+  if (file.size > maxSizeBytes.value) {
+    uploadError.value = `File exceeds max allowed size of ${uploadSizeLabel.value}.`;
     return;
   }
 
@@ -119,6 +126,7 @@ const isImage = filename => {
       <input
         ref="fileInputRef"
         type="file"
+        :accept="acceptedFiles"
         class="hidden"
         @change="handleFileInputChange"
       />
@@ -133,7 +141,7 @@ const isImage = filename => {
           <span class="text-indigo-600 font-semibold">Click to upload</span> or drag and drop
         </p>
         <p class="text-[11px] text-slate-400">
-          PNG, JPG, PDF, ZIP, DOCX, CSV up to 10MB
+          Files up to {{ uploadSizeLabel }}
         </p>
       </div>
 

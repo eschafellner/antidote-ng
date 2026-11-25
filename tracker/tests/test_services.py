@@ -34,6 +34,7 @@ class IssueAndActivityServiceTests(TestCase):
             owner=self.owner,
         )
 
+        ProjectMembership.objects.create(user=self.owner, project=self.project, role=ProjectRole.ADMIN)
         ProjectMembership.objects.create(user=self.developer, project=self.project, role=ProjectRole.MEMBER)
         ProjectMembership.objects.create(user=self.viewer, project=self.project, role=ProjectRole.VIEWER)
 

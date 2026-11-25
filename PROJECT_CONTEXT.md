@@ -23,10 +23,10 @@ Dokumentation des aktuellen Projektstands von **Antidote (NextGen Issue-Tracker)
 ```mermaid
 flowchart TD
     User["Benutzer"] --> Tier1{"1. Globale Systemrolle"}
-    Tier1 -->|"Global Admin (is_superuser)"| GAdmin["Vollzugriff auf alle Projekte<br>+ Globale Userverwaltung (/users/)"]
+    Tier1 -->|"Global Admin (is_superuser / is_staff)"| GAdmin["Globale Benutzerverwaltung (/users/)"]
     Tier1 -->|"Global Member"| GMember["Dashboard (/projects/)<br>Nur zugewiesene Projekte"]
     
-    GAdmin --> ProjectsAll["Sieht & verwaltet alle Projekte"]
+    GAdmin --> Tier2
     GMember --> Tier2{"2. ProjectMembership"}
     
     Tier2 -->|"role='admin'"| PAdmin["Projekt-Admin (Settings & Mitglieder)"]
@@ -35,9 +35,10 @@ flowchart TD
 ```
 
 - **Service-Layer verpflichtend:** Sämtliche Geschäftslogik, Berechtigungsprüfungen, Key-Generierung und Activity-Logging liegen ausschließlich in `tracker/services/`. Views orchestrieren ausschließlich HTTP/Inertia-Requests.
-- **Multi-Tenancy & Isolation:** Jede Query wird strikt nach Projektmitgliedschaft (`ProjectMembership`) oder globalem Admin-Status über `PermissionService` gefiltert. Non-Members erhalten keinen Datenzugriff und ausnahmslos **HTTP 404** zur Verhinderung von Projekt-/Issue-Enumeration.
-- **Sequenzielle Issue-Keys (`PROJ-42`):** Race-Condition-sichere Generierung via `IssueKeyService` mittels `select_for_update()` auf `Project.issue_counter` innerhalb einer atomaren Transaktion mit exponentialem Backoff-Retry.
+- **Multi-Tenancy & Isolation:** Projektzugriffe setzen eine `ProjectMembership` mit passender Rolle voraus. Das gilt auch für globale Admins. Projekt- und Issue-URLs liefern für Nichtmitglieder HTTP 404.
+- **Sequenzielle Issue-Keys (`PROJ-42`):** `IssueKeyService` sperrt den Projekt-Datensatz über `select_for_update()`. Bei einem vorübergehenden Schreibkonflikt beginnen Nummernvergabe, Issue-Anlage und Aktivitätseintrag gemeinsam in einer frischen Transaktion.
 - **Soft-Delete für Issues:** Vorgänge werden über `is_deleted` und `deleted_at` audit-sicher deaktiviert und können wiederhergestellt werden.
+- **Projektarchivierung:** `archived_at` blendet das Projekt aus den aktiven Ansichten aus. Issues, Verlauf, Anhänge und Mitgliedschaften bleiben im Archiv erhalten.
 - **Activity-Log:** Direkte Erstellung im Service-Layer ohne Django-Signals für transparente Nachvollziehbarkeit.
 
 ---
@@ -159,7 +160,7 @@ antidote-ng/
 ### Wichtige Module & Elemente
 
 #### 1. Modelle ([`tracker/models/`](file:///home/edgar/Videos/antidote-ng/tracker/models/))
-- `Project`: `name`, `slug` (unique), `key` (uppercase, 2-10 chars), `description`, `owner` (FK User), `issue_counter` (PositiveInteger).
+- `Project`: `name`, `slug` (unique), `key` (uppercase, 2-10 chars), `description`, `owner` (FK User), `issue_counter` (PositiveInteger), `archived_at` (DateTime, nullable).
 - `ProjectMembership`: `user` (FK), `project` (FK), `role` (`admin`, `member`, `viewer`), `unique_together = (user, project)`.
 - `ProjectInvitation`: `project` (FK), `email`, `role`, `token` (URL-safe secret, unique), `invited_by` (FK), `expires_at`, `is_accepted`.
 - `Issue`: `project` (FK), `number` (Integer), `key` (`PROJ-42`, unique), `title`, `description` (Markdown), `type` (`task`, `bug`, `story`), `status` (`todo`, `in_progress`, `review`, `done`, `canceled`), `priority` (`low`, `medium`, `high`, `urgent`), `reporter` (FK), `assignee` (FK, nullable), `due_date` (Date, nullable), `position` (PositiveInteger für Sortierung in Kanban-Spalte), `is_deleted` (Bool), `deleted_at` (DateTime).
@@ -170,7 +171,7 @@ antidote-ng/
 #### 2. Services ([`tracker/services/`](file:///home/edgar/Videos/antidote-ng/tracker/services/))
 - `PermissionService`: Zentrale RBAC-Prüfung (`is_global_admin`, `can_manage_global_users`, `can_view_project`, `can_manage_project`, `can_manage_members`, `can_invite`, `can_create_issue`, `can_edit_issue`, `can_delete_issue`, `can_add_comment`, `can_edit_comment`, `can_upload_attachment`, `filter_projects_for_user`, `filter_issues_for_user`).
 - `IssueKeyService`: Generiert atomar `(number, formatted_key)` mit `select_for_update()` und Lock-Contention-Retry mit Jitter.
-- `ProjectService`: `create_project`, `update_project`, `delete_project`, `get_user_projects_summary`, `get_all_projects_for_management`.
+- `ProjectService`: `create_project`, `update_project`, `archive_project`, `purge_archived_project`, `get_user_projects_summary`, `get_projects_for_user_management`.
 - `GlobalUserService`: `list_users_with_project_memberships`, `create_user`, `update_user`, `update_user_project_access`, `delete_user`.
 - `IssueService`: `create_issue`, `update_issue` (Inline-Fields), `move_issue` (Spaltenwechsel & Positions-Shift), `soft_delete_issue`, `restore_issue`, `get_project_kanban_board_data`, `get_project_issues_list` (Live-Filterung & Paginierung), `get_issue_detail_data`.
 - `AttachmentService`: `upload_attachment` (Größen- und Whitelist-Validierung), `delete_attachment` (physische Datei + DB-Row).

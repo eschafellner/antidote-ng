@@ -59,6 +59,7 @@ class PermissionServiceTests(TestCase):
             key="FORG",
             owner=self.outsider,
         )
+        ProjectMembership.objects.create(user=self.outsider, project=self.foreign_project, role=ProjectRole.ADMIN)
         self.foreign_issue = Issue.objects.create(
             project=self.foreign_project,
             number=1,
@@ -106,6 +107,13 @@ class PermissionServiceTests(TestCase):
         self.assertFalse(PermissionService.can_view_issue(self.anon, self.issue))
         self.assertFalse(PermissionService.can_create_issue(self.anon, self.project))
         self.assertFalse(PermissionService.can_edit_issue(self.anon, self.issue))
+
+    def test_owner_and_staff_require_membership(self) -> None:
+        self.assertFalse(PermissionService.can_view_project(self.owner, self.project))
+        self.outsider.is_staff = True
+        self.assertTrue(PermissionService.can_manage_global_users(self.outsider))
+        self.assertFalse(PermissionService.can_view_project(self.outsider, self.project))
+        self.assertFalse(PermissionService.can_archive_project(self.outsider, self.project))
 
     def test_multi_tenancy_query_scoping(self) -> None:
         """Verify that QuerySet filters strictly isolate tenant/project data between users."""

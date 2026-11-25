@@ -1,6 +1,5 @@
 from typing import Optional, Union, Any
 from django.contrib.auth.models import AbstractBaseUser, AnonymousUser
-from django.db import models
 from django.db.models import QuerySet
 
 from tracker.models.project import Project, ProjectMembership, ProjectRole
@@ -13,75 +12,37 @@ UserType = Union[AbstractBaseUser, AnonymousUser, Any]
 
 class PermissionService:
     """
-    Centralized Role-Based Access Control (RBAC) and Multi-Tenancy authorization service.
+    Prüft globale Kontoverwaltung und Mitgliedsrollen in aktiven Projekten.
 
-    Supports a 2-tier role model:
-    1. Global Roles: Global Admin (is_superuser/is_staff) with system-wide access vs. Global Member.
-    2. Project Roles: Project Admin, Member (User), Viewer within specific projects.
-
-    =================================================================================================
-    PERMISSION MATRIX:
-    =================================================================================================
-    Action                    | Global Admin | Project Admin | Member | Viewer | Non-Member / Anon
-    -------------------------------------------------------------------------------------------------
-    can_manage_global_users   | Yes          | No            | No     | No     | No
-    can_view_project          | Yes          | Yes           | Yes    | Yes    | No
-    can_manage_project        | Yes          | Yes           | No     | No     | No
-    can_delete_project        | Yes          | Owner only    | No     | No     | No
-    can_manage_members        | Yes          | Yes           | No     | No     | No
-    can_invite                | Yes          | Yes           | No     | No     | No
-    can_view_issue            | Yes          | Yes           | Yes    | Yes    | No
-    can_create_issue          | Yes          | Yes           | Yes    | No     | No
-    can_edit_issue            | Yes          | Yes           | Yes    | No     | No
-    can_delete_issue          | Yes          | Yes           | No     | No     | No
-    can_add_comment           | Yes          | Yes           | Yes    | No     | No
-    can_edit_comment          | Yes          | Yes           | Author | No     | No
-    can_delete_comment        | Yes          | Yes           | Author | No     | No
-    can_upload_attachment     | Yes          | Yes           | Yes    | No     | No
-    can_delete_attachment     | Yes          | Yes           | Uploader|No    | No
-    =================================================================================================
-
-    Soft-deleted issues are read-only: editing, commenting and attachment changes are denied
-    until the issue is restored (restoring is covered by can_delete_issue).
-
-    Checks that are evaluated for many objects of the same project (comments, attachments)
-    accept an optional pre-computed `role` (from get_role) to avoid one query per object.
+    Globale Administratoren erhalten Projektzugriff über ihre Projektmitgliedschaft.
+    Gelöschte Issues bleiben bis zur Wiederherstellung schreibgeschützt.
+    Für Listen mit Kommentaren oder Anhängen kann die Projektrolle mitgegeben werden.
     """
 
     @classmethod
     def is_global_admin(cls, user: UserType) -> bool:
-        """
-        Check if the user is a Global Administrator (superuser or staff).
-        Global Admins have system-wide access across all projects and users.
-        """
+        """Prüft die globale Rolle für die Kontoverwaltung."""
         if not user or not user.is_authenticated:
             return False
         return bool(user.is_superuser or getattr(user, "is_staff", False))
 
     @classmethod
     def can_manage_global_users(cls, user: UserType) -> bool:
-        """Only Global Administrators can manage global users and their project access."""
+        """Prüft den Zugriff auf die globale Kontoverwaltung."""
         return cls.is_global_admin(user)
 
     @classmethod
     def get_membership(cls, user: UserType, project: Project) -> Optional[ProjectMembership]:
-        """Retrieve the membership record for a given user in a project."""
+        """Liefert die Mitgliedschaft in einem aktiven Projekt."""
         if not user or not user.is_authenticated:
             return None
-        return ProjectMembership.objects.filter(user=user, project=project).first()
+        return ProjectMembership.objects.filter(user=user, project=project, project__archived_at__isnull=True).first()
 
     @classmethod
     def get_role(cls, user: UserType, project: Project) -> Optional[str]:
-        """
-        Return the ProjectRole choice string for the user in the project, or None.
-        If user is global admin or owner, returns 'admin'.
-        """
-        if not user or not user.is_authenticated:
-            return None
-        if cls.is_global_admin(user) or cls.is_project_owner(user, project):
-            return ProjectRole.ADMIN
+        """Liefert die Rolle aus der Projektmitgliedschaft."""
         membership = cls.get_membership(user, project)
-        return membership.role if membership else None
+        return membership.role if membership and membership.role in ProjectRole.values else None
 
     @classmethod
     def is_project_owner(cls, user: UserType, project: Project) -> bool:
@@ -96,47 +57,30 @@ class PermissionService:
 
     @classmethod
     def can_view_project(cls, user: UserType, project: Project) -> bool:
-        """Global Admin, Project Owner, or any valid member (Admin, Member, Viewer) can view."""
-        if not user or not user.is_authenticated:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, project):
-            return True
-        return ProjectMembership.objects.filter(user=user, project=project).exists()
+        """Projektmitglieder können aktive Projekte lesen."""
+        return cls.get_role(user, project) is not None
 
     @classmethod
     def can_manage_project(cls, user: UserType, project: Project) -> bool:
-        """Global Admin, Project Owner, or Project Admin can update settings / delete project."""
-        if not user or not user.is_authenticated:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, project):
-            return True
-        role = cls.get_role(user, project)
-        return role == ProjectRole.ADMIN
+        """Projekt-Admins dürfen Projekteinstellungen bearbeiten."""
+        return cls.get_role(user, project) == ProjectRole.ADMIN
 
     @classmethod
-    def can_delete_project(cls, user: UserType, project: Project) -> bool:
-        """Only the Project Owner or a Global Admin may permanently delete a project."""
-        if not user or not user.is_authenticated:
-            return False
-        return cls.is_global_admin(user) or cls.is_project_owner(user, project)
+    def can_archive_project(cls, user: UserType, project: Project) -> bool:
+        """Die Archivierung setzt eine Projekt-Admin-Rolle und Eigentümerschaft oder globale Administration voraus."""
+        return cls.can_manage_project(user, project) and (
+            cls.is_project_owner(user, project) or cls.is_global_admin(user)
+        )
 
     @classmethod
     def can_manage_members(cls, user: UserType, project: Project) -> bool:
-        """Global Admin, Project Owner, or Project Admin can modify/remove project members."""
-        if not user or not user.is_authenticated:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, project):
-            return True
-        return cls.get_role(user, project) == ProjectRole.ADMIN
+        """Projekt-Admins dürfen Mitgliedschaften verwalten."""
+        return cls.can_manage_project(user, project)
 
     @classmethod
     def can_invite(cls, user: UserType, project: Project) -> bool:
-        """Global Admin, Project Owner, or Project Admin can invite new members to the project."""
-        if not user or not user.is_authenticated:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, project):
-            return True
-        return cls.get_role(user, project) == ProjectRole.ADMIN
+        """Projekt-Admins dürfen neue Mitglieder einladen."""
+        return cls.can_manage_members(user, project)
 
     # -------------------------------------------------------------------------
     # Issue-Level Permissions
@@ -149,39 +93,23 @@ class PermissionService:
 
     @classmethod
     def can_create_issue(cls, user: UserType, project: Project) -> bool:
-        """Global Admins, Project Admins, and Members can create issues. Viewers cannot."""
-        if not user or not user.is_authenticated:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, project):
-            return True
-        role = cls.get_role(user, project)
-        return role in (ProjectRole.ADMIN, ProjectRole.MEMBER)
+        """Projekt-Admins und Member dürfen Issues anlegen."""
+        return cls.get_role(user, project) in (ProjectRole.ADMIN, ProjectRole.MEMBER)
 
     @classmethod
     def can_edit_issue(cls, user: UserType, issue: Issue) -> bool:
-        """Global Admins, Project Admins, and Members can edit issues. Viewers cannot."""
-        if not user or not user.is_authenticated or issue.is_deleted:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, issue.project):
-            return True
-        role = cls.get_role(user, issue.project)
-        return role in (ProjectRole.ADMIN, ProjectRole.MEMBER)
+        """Projekt-Admins und Member dürfen aktive Issues bearbeiten."""
+        return not issue.is_deleted and cls.can_create_issue(user, issue.project)
 
     @classmethod
     def can_delete_issue(cls, user: UserType, issue: Issue) -> bool:
-        """Nur globale Admins, Projekteigentümer und Projekt-Admins dürfen Issues löschen."""
-        if not user or not user.is_authenticated:
-            return False
-        if cls.is_global_admin(user) or cls.is_project_owner(user, issue.project):
-            return True
-        return cls.get_role(user, issue.project) == ProjectRole.ADMIN
+        """Projekt-Admins dürfen Issues löschen und wiederherstellen."""
+        return cls.can_manage_project(user, issue.project)
 
     @classmethod
     def can_assign_issue_to(cls, user: UserType, project: Project) -> bool:
         """Ein Assignee muss Mitglied des zugehörigen Projekts sein."""
-        if not user or not user.is_authenticated:
-            return False
-        return ProjectMembership.objects.filter(user=user, project=project).exists()
+        return cls.can_view_project(user, project)
 
     # -------------------------------------------------------------------------
     # Comment Permissions
@@ -189,14 +117,14 @@ class PermissionService:
 
     @classmethod
     def can_add_comment(cls, user: UserType, issue: Issue) -> bool:
-        """Global Admins, Project Admins, and Members can comment on issues. Viewers cannot."""
+        """Projekt-Admins und Member dürfen aktive Issues kommentieren."""
         if issue.is_deleted:
             return False
         return cls.can_create_issue(user, issue.project)
 
     @classmethod
     def can_edit_comment(cls, user: UserType, comment: Comment, role: Optional[str] = None) -> bool:
-        """Author, Global Admin, or Project Admin can edit comment content."""
+        """Projekt-Admins und Autoren mit Member-Rolle dürfen Kommentare bearbeiten."""
         if not user or not user.is_authenticated or comment.issue.is_deleted:
             return False
         if role is None:
@@ -207,7 +135,7 @@ class PermissionService:
 
     @classmethod
     def can_delete_comment(cls, user: UserType, comment: Comment, role: Optional[str] = None) -> bool:
-        """Author, Global Admin, or Project Admin can delete a comment."""
+        """Projekt-Admins und Autoren mit Member-Rolle dürfen Kommentare löschen."""
         return cls.can_edit_comment(user, comment, role=role)
 
     # -------------------------------------------------------------------------
@@ -216,7 +144,7 @@ class PermissionService:
 
     @classmethod
     def can_upload_attachment(cls, user: UserType, issue: Issue) -> bool:
-        """Global Admins, Project Admins, and Members can upload attachments."""
+        """Projekt-Admins und Member dürfen Anhänge zu aktiven Issues hochladen."""
         if issue.is_deleted:
             return False
         return cls.can_create_issue(user, issue.project)
@@ -225,7 +153,7 @@ class PermissionService:
     def can_delete_attachment(
         cls, user: UserType, attachment: IssueAttachment, role: Optional[str] = None
     ) -> bool:
-        """Uploader, Global Admin, or Project Admin can delete an attachment."""
+        """Projekt-Admins und Uploader mit Member-Rolle dürfen Anhänge löschen."""
         if not user or not user.is_authenticated or attachment.issue.is_deleted:
             return False
         if role is None:
@@ -239,19 +167,14 @@ class PermissionService:
     # -------------------------------------------------------------------------
 
     @classmethod
-    def filter_projects_for_user(cls, user: UserType) -> QuerySet[Project]:
-        """
-        Return QuerySet of all projects that the user has legitimate access to.
-        Global Admins see all projects in the system.
-        Regular Members see only projects they own or are members of.
-        """
+    def filter_projects_for_user(cls, user: UserType, role: Optional[str] = None) -> QuerySet[Project]:
+        """Filtert aktive Projekte anhand der Mitgliedschaft und optional ihrer Rolle."""
         if not user or not user.is_authenticated:
             return Project.objects.none()
-        if cls.is_global_admin(user):
-            return Project.objects.all()
-        return Project.objects.filter(
-            models.Q(owner=user) | models.Q(memberships__user=user)
-        ).distinct()
+        projects = Project.objects.filter(archived_at__isnull=True)
+        if role is not None:
+            return projects.filter(memberships__user=user, memberships__role=role)
+        return projects.filter(memberships__user=user, memberships__role__in=ProjectRole.values)
 
     @classmethod
     def filter_issues_for_user(

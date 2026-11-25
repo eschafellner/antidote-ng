@@ -84,8 +84,8 @@ const revokeInvite = invitationId => {
   );
 };
 
-const deleteProject = () => {
-  if (confirm(`Are you ABSOLUTELY sure you want to delete "${props.project.name}"? This action cannot be undone.`)) {
+const archiveProject = () => {
+  if (confirm(`Archive "${props.project.name}" and remove it from active projects?`)) {
     router.post(`/projects/${props.project.slug}/delete/`);
   }
 };
@@ -296,17 +296,17 @@ const deleteProject = () => {
       </div>
 
       <!-- Danger Zone -->
-      <div v-if="project.can_delete" class="bg-rose-50/60 rounded-2xl border border-rose-200 p-6">
+      <div v-if="project.can_archive" class="bg-rose-50/60 rounded-2xl border border-rose-200 p-6">
         <h2 class="text-sm font-bold text-rose-900">Danger Zone</h2>
         <p class="text-xs text-rose-700 mt-1">
-          Deleting this project will permanently remove all issues, comments, attachments, and memberships.
+          Archiving hides this project from active views and preserves its issues, comments, attachments, and memberships.
         </p>
         <button
           type="button"
           class="mt-4 px-4 py-2.5 text-xs font-bold text-white bg-rose-600 rounded-xl shadow-xs hover:bg-rose-700 transition-colors"
-          @click="deleteProject"
+          @click="archiveProject"
         >
-          Delete Project
+          Archive Project
         </button>
       </div>
     </div>

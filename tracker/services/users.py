@@ -28,7 +28,8 @@ class GlobalUserService:
             raise PermissionDenied("You do not have permission to access global user management.")
 
         users = User.objects.all().order_by("username")
-        memberships = ProjectMembership.objects.select_related("project").all()
+        visible_projects = PermissionService.filter_projects_for_user(actor)
+        memberships = ProjectMembership.objects.filter(project__in=visible_projects).select_related("project")
 
         user_memberships_map: Dict[int, List[Dict[str, Any]]] = {}
         for m in memberships:
@@ -113,15 +114,12 @@ class GlobalUserService:
                     project_id = item.get("project_id")
                     role = item.get("role")
                     if project_id and role in ProjectRole.values:
-                        try:
-                            project = Project.objects.get(pk=project_id)
-                            ProjectMembership.objects.create(
-                                user=new_user,
-                                project=project,
-                                role=role,
-                            )
-                        except Project.DoesNotExist:
-                            continue
+                        project = cls._get_managed_project(actor, project_id)
+                        ProjectMembership.objects.create(
+                            user=new_user,
+                            project=project,
+                            role=role,
+                        )
 
         return new_user
 
@@ -217,10 +215,7 @@ class GlobalUserService:
                 if not project_id:
                     continue
 
-                try:
-                    project = Project.objects.get(pk=project_id)
-                except Project.DoesNotExist:
-                    continue
+                project = cls._get_managed_project(actor, project_id)
 
                 if project.owner_id == target_user.id and role != ProjectRole.ADMIN:
                     raise ValidationError({
@@ -233,21 +228,29 @@ class GlobalUserService:
                         project=project,
                         defaults={"role": role},
                     )
-                else:
-                    # Remove membership if role is empty / None / none
+                elif role in ("", None, "none"):
                     ProjectMembership.objects.filter(
                         user=target_user,
                         project=project,
                     ).delete()
+                else:
+                    raise ValidationError({"project_access": "Select a valid project role."})
+
+    @staticmethod
+    def _get_managed_project(actor: AbstractBaseUser, project_id: int) -> Project:
+        projects = PermissionService.filter_projects_for_user(actor, role=ProjectRole.ADMIN)
+        try:
+            return projects.get(pk=project_id)
+        except (Project.DoesNotExist, TypeError, ValueError) as exc:
+            raise ValidationError({"project_access": "You cannot manage this project."}) from exc
 
     @classmethod
     def delete_user(cls, actor: AbstractBaseUser, target_user_id: int) -> bool:
         """
         Delete a user account. Admins cannot delete themselves.
 
-        Users that are still referenced by audit-relevant data (reported issues, comments,
-        attachments, owned projects) are deactivated instead of deleted: `is_active=False`
-        blocks login and running sessions, and non-owner memberships are removed.
+        Konten mit geschützten Referenzen oder Daten in fremden Projekten werden deaktiviert.
+        Mitgliedschaften werden nur in Projekten entfernt, die der Akteur verwalten darf.
 
         :return: True if the user was deleted, False if the account was deactivated.
         """
@@ -265,17 +268,24 @@ class GlobalUserService:
         if target_user.is_superuser and cls._is_last_active_superuser(target_user):
             raise ValidationError({"user": "Cannot delete the only remaining Global Admin."})
 
-        try:
-            with transaction.atomic():
-                target_user.delete()
-            return True
-        except ProtectedError:
-            pass
+        managed_projects = PermissionService.filter_projects_for_user(actor, role=ProjectRole.ADMIN)
+        has_unmanaged_references = (
+            target_user.project_memberships.exclude(project__in=managed_projects).exists()
+            or target_user.sent_invitations.exclude(project__in=managed_projects).exists()
+            or target_user.issue_activities.exclude(issue__project__in=managed_projects).exists()
+        )
+        if not has_unmanaged_references:
+            try:
+                with transaction.atomic():
+                    target_user.delete()
+                return True
+            except ProtectedError:
+                pass
 
         with transaction.atomic():
             target_user.is_active = False
             target_user.save(update_fields=["is_active"])
-            ProjectMembership.objects.filter(user=target_user).exclude(
+            ProjectMembership.objects.filter(user=target_user, project__in=managed_projects).exclude(
                 project__owner=target_user
             ).delete()
         return False

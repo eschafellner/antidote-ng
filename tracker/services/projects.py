@@ -3,10 +3,12 @@ from django.contrib.auth.models import AbstractBaseUser
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Count, Q, QuerySet
+from django.utils import timezone
 
+from tracker.models.attachment import IssueAttachment
 from tracker.models.project import Project, ProjectMembership, ProjectRole
-from tracker.models.issue import Issue
 from tracker.services.permissions import PermissionService
+from tracker.services.transactions import run_write_transaction
 from tracker.validators import validate_project_key
 
 
@@ -35,11 +37,8 @@ class ProjectService:
         if not owner or not owner.is_authenticated:
             raise PermissionDenied("Authentication required to create a project.")
 
-        name = name.strip()
+        name = cls._clean_name(name)
         key = key.strip().upper()
-
-        if not name:
-            raise ValidationError({"name": "Project name cannot be empty."})
 
         validate_project_key(key)
 
@@ -76,25 +75,75 @@ class ProjectService:
         if not PermissionService.can_manage_project(actor, project):
             raise PermissionDenied("You do not have permission to modify this project.")
 
-        name = name.strip()
-        if not name:
-            raise ValidationError({"name": "Project name cannot be empty."})
-
-        project.name = name
+        project.name = cls._clean_name(name)
         project.description = description.strip()
         project.save(update_fields=["name", "description", "updated_at"])
         return project
 
-    @classmethod
-    def delete_project(cls, project: Project, actor: AbstractBaseUser) -> None:
-        """
-        Permanently delete a project and all associated issues, memberships, and invitations.
-        Only the project owner or a global admin can perform deletion.
-        """
-        if not PermissionService.can_delete_project(actor, project):
-            raise PermissionDenied("You do not have permission to delete this project.")
+    @staticmethod
+    def _clean_name(value: object) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValidationError({"name": "Project name cannot be empty."})
+        name = value.strip()
+        try:
+            Project._meta.get_field("name").run_validators(name)
+        except ValidationError as exc:
+            raise ValidationError({"name": exc.messages}) from exc
+        return name
 
-        project.delete()
+    @classmethod
+    def archive_project(cls, project: Project, actor: AbstractBaseUser) -> None:
+        """Entfernt das Projekt aus der aktiven Ansicht und erhält die zugehörigen Daten."""
+        if not PermissionService.can_archive_project(actor, project):
+            raise PermissionDenied("You do not have permission to archive this project.")
+
+        archived_at = timezone.now()
+        Project.objects.filter(pk=project.pk, archived_at__isnull=True).update(
+            archived_at=archived_at, updated_at=archived_at
+        )
+
+    @classmethod
+    def purge_archived_project(cls, slug: str) -> None:
+        """Entfernt ein archiviertes Projekt und seine Dateien aus der Betriebsumgebung."""
+        with transaction.atomic():
+            project = Project.objects.select_for_update().get(slug=slug, archived_at__isnull=False)
+            # Reserviert auch bei SQLite den Schreibzugriff vor der Dateibereinigung.
+            Project.objects.filter(pk=project.pk).update(updated_at=timezone.now())
+            # Bis zur vollständigen Dateibereinigung bleiben die Pfade für einen erneuten Versuch erhalten.
+            for attachment in IssueAttachment.objects.filter(issue__project=project).iterator():
+                if attachment.file:
+                    attachment.file.storage.delete(attachment.file.name)
+            project.delete()
+
+    @classmethod
+    def restore_archived_project(cls, slug: str) -> Project:
+        """Stellt ein archiviertes Projekt mit seinen bestehenden Mitgliedschaften wieder her."""
+        def restore() -> Project:
+            project = Project.objects.select_for_update().get(slug=slug, archived_at__isnull=False)
+            project.archived_at = None
+            project.save(update_fields=["archived_at", "updated_at"])
+            for attachment in IssueAttachment.objects.filter(issue__project=project).iterator():
+                if attachment.file and not attachment.file.storage.exists(attachment.file.name):
+                    raise ValidationError("Dem Archiv fehlen Anhangsdateien. Stelle die Dateien aus der Sicherung wieder her.")
+            return project
+
+        return run_write_transaction(restore)
+
+    @classmethod
+    def get_project_navigation_data(cls, project: Project, actor: AbstractBaseUser) -> Dict[str, Any]:
+        """Liefert Projektdaten und Berechtigungen für die gemeinsame Navigation."""
+        role = PermissionService.get_role(actor, project)
+        if role is None:
+            raise PermissionDenied("You do not have permission to view this project.")
+        return {
+            "id": project.id,
+            "name": project.name,
+            "slug": project.slug,
+            "key": project.key,
+            "is_owner": project.owner_id == actor.id,
+            "user_role": role,
+            "can_create_issue": PermissionService.can_create_issue(actor, project),
+        }
 
     @classmethod
     def get_user_projects_summary(cls, user: AbstractBaseUser) -> List[Dict[str, Any]]:
@@ -108,12 +157,10 @@ class ProjectService:
         projects_qs: QuerySet[Project] = (
             PermissionService.filter_projects_for_user(user)
             .annotate(
-                # distinct=True: the membership join in filter_projects_for_user multiplies issue rows
-                total_issues=Count("issues", filter=Q(issues__is_deleted=False), distinct=True),
+                total_issues=Count("issues", filter=Q(issues__is_deleted=False)),
                 open_issues=Count(
                     "issues",
                     filter=Q(issues__is_deleted=False) & ~Q(issues__status="done") & ~Q(issues__status="canceled"),
-                    distinct=True,
                 ),
             )
             .order_by("name")
@@ -126,14 +173,10 @@ class ProjectService:
         }
 
         results: List[Dict[str, Any]] = []
-        is_global_admin = PermissionService.is_global_admin(user)
         for p in projects_qs:
-            if is_global_admin:
-                role = memberships_map.get(p.id, ProjectRole.ADMIN)
-            else:
-                role = memberships_map.get(
-                    p.id, ProjectRole.ADMIN if p.owner_id == user.id else ProjectRole.VIEWER
-                )
+            role = memberships_map.get(p.id)
+            if role is None:
+                continue
             results.append({
                 "id": p.id,
                 "name": p.name,
@@ -150,11 +193,11 @@ class ProjectService:
         return results
 
     @classmethod
-    def get_all_projects_for_management(cls) -> List[Dict[str, Any]]:
-        """
-        Return all projects for the global user management access matrix.
-        """
-        projects = Project.objects.order_by("name")
+    def get_projects_for_user_management(cls, actor: AbstractBaseUser) -> List[Dict[str, Any]]:
+        """Liefert die verwaltbaren Projekte für die globale Benutzerverwaltung."""
+        if not PermissionService.can_manage_global_users(actor):
+            raise PermissionDenied("You do not have permission to access global user management.")
+        projects = PermissionService.filter_projects_for_user(actor, role=ProjectRole.ADMIN)
         return [
             {
                 "id": p.id,

@@ -35,3 +35,14 @@ docker compose exec app python manage.py createsuperuser
 Für einen VPS mit direkten Ports 80/443 kannst du in `.env` `COMPOSE_FILE=compose.yaml` setzen; dann übernimmt Caddy das HTTPS-Zertifikat. Docker speichert Datenbank und Uploads in persistenten Volumes. Das bisherige manuelle Setup mit Nginx, systemd und Certbot bleibt im Guide beschrieben.
 
 Details siehe **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)**.
+
+### Projekte archivieren
+
+Die Aktion **Archive Project** in den Projekteinstellungen blendet das Projekt aus den aktiven Ansichten aus und erhält Issues, Verlauf und Dateien. Auch globale Admins brauchen eine Projektmitgliedschaft mit passender Rolle.
+
+In der Betriebsumgebung macht `python manage.py restore_archived_project <slug>` ein archiviertes Projekt für seine Mitglieder wieder sichtbar. Noch gültige Einladungen können danach wieder angenommen werden.
+In der Betriebsumgebung löscht `python manage.py purge_archived_project <slug>` ein archiviertes Projekt samt Historie und Dateien endgültig.
+
+### Browser-Tests
+
+Nach der Installation der Python- und npm-Abhängigkeiten installiert `npx playwright install chromium` den Testbrowser. `npm run test:browser` baut das Frontend, legt eine temporäre Datenbank an und prüft die Anwendung in Chromium.

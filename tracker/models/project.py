@@ -41,6 +41,7 @@ class Project(models.Model):
         default=0,
         help_text="Monotonically increasing sequence counter for issue keys (e.g. 1 -> PROJ-1).",
     )
+    archived_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -56,11 +57,13 @@ class Project(models.Model):
 
     def save(self, *args, **kwargs) -> None:
         if not self.slug:
-            base_slug = slugify(self.name) or "project"
+            max_length = self._meta.get_field("slug").max_length
+            base_slug = (slugify(self.name) or "project")[:max_length]
             slug = base_slug
             counter = 1
             while Project.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                slug = f"{base_slug}-{counter}"
+                suffix = f"-{counter}"
+                slug = f"{base_slug[:max_length - len(suffix)]}{suffix}"
                 counter += 1
             self.slug = slug
         if self.key:
@@ -170,4 +173,8 @@ class ProjectInvitation(models.Model):
     @property
     def is_valid(self) -> bool:
         """Check if invitation is currently active and not expired."""
-        return self.status == InvitationStatus.PENDING and timezone.now() < self.expires_at
+        return (
+            self.status == InvitationStatus.PENDING
+            and timezone.now() < self.expires_at
+            and self.project.archived_at is None
+        )

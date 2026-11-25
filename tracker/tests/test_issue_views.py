@@ -1,5 +1,5 @@
 from django.contrib.auth import get_user_model
-from django.test import TestCase, Client
+from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 
 from tracker.models import (
@@ -63,6 +63,44 @@ class IssueViewsTests(TestCase):
         self.client.force_login(self.outsider)
         response = self.client.get(reverse("project_board", kwargs={"slug": self.project.slug}))
         self.assertEqual(response.status_code, 404)
+
+    def test_activity_loads_separately_in_stable_pages(self) -> None:
+        log_entries = ActivityLog.objects.bulk_create([
+            ActivityLog(issue=self.issue, actor=self.member, action=ActivityAction.UPDATED, new_value=str(index))
+            for index in range(22)
+        ])
+        ActivityLog.objects.filter(issue=self.issue).update(created_at=self.issue.created_at)
+        kwargs = {"slug": self.project.slug, "key": self.issue.key}
+        detail_url = reverse("issue_detail", kwargs=kwargs)
+        activity_url = reverse("issue_activity", kwargs=kwargs)
+
+        self.client.force_login(self.viewer)
+        detail = self.client.get(detail_url, HTTP_X_INERTIA="true").json()["props"]["detail"]
+        self.assertEqual(detail["activity_count"], 22)
+        self.assertNotIn("activity_logs", detail)
+        self.assertEqual(detail["activity_url"], activity_url)
+
+        first = self.client.get(activity_url).json()
+        self.assertEqual([item["id"] for item in first["items"]], [entry.pk for entry in log_entries[:1:-1]])
+        self.assertEqual(first["next_before"], str(log_entries[2].pk))
+        ActivityLog.objects.create(issue=self.issue, actor=self.owner, action=ActivityAction.COMMENT_ADDED)
+        second = self.client.get(activity_url, {"before": first["next_before"]}).json()
+        self.assertEqual([item["id"] for item in second["items"]], [log_entries[1].pk, log_entries[0].pk])
+        self.assertIsNone(second["next_before"])
+
+        self.assertEqual(self.client.get(activity_url, {"before": "invalid"}).status_code, 400)
+        self.client.force_login(self.outsider)
+        self.assertEqual(self.client.get(activity_url).status_code, 404)
+
+    @override_settings(MAX_ATTACHMENT_SIZE_BYTES=15000000, ALLOWED_ATTACHMENT_EXTENSIONS=["pdf"])
+    def test_issue_detail_shares_the_server_upload_policy(self) -> None:
+        self.client.force_login(self.member)
+        url = reverse("issue_detail", kwargs={"slug": self.project.slug, "key": self.issue.key})
+        detail = self.client.get(url, HTTP_X_INERTIA="true").json()["props"]["detail"]
+        self.assertEqual(detail["attachment_policy"], {
+            "max_size_bytes": 15000000,
+            "allowed_extensions": ["pdf"],
+        })
 
     def test_issue_list_view_with_filtering(self) -> None:
         """Verify table/backlog view with filters across status and text search."""

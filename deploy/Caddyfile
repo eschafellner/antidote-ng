@@ -2,7 +2,7 @@
 	encode zstd gzip
 
 	request_body {
-		max_size 16MB
+		max_size {$ANTIDOTE_REQUEST_BODY_BYTES:16MB}
 	}
 
 	handle_path /static/* {

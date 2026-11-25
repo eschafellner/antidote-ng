@@ -23,7 +23,7 @@ def user_management_index_view(request: HttpRequest) -> HttpResponse:
         raise PermissionDenied("You do not have permission to access global user management.")
 
     users = GlobalUserService.list_users_with_project_memberships(request.user)
-    projects = ProjectService.get_all_projects_for_management()
+    projects = ProjectService.get_projects_for_user_management(request.user)
 
     available_roles = [
         {"value": ProjectRole.ADMIN, "label": "Project Admin"},
@@ -142,7 +142,7 @@ def user_delete_view(request: HttpRequest, user_id: int) -> HttpResponse:
         else:
             flash_message(
                 request,
-                "User still owns issues, comments, attachments or projects and was deactivated instead.",
+                "User was deactivated.",
                 level="info",
             )
     except ValidationError as exc:

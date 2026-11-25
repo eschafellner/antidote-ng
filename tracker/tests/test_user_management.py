@@ -23,16 +23,8 @@ class GlobalUserManagementServiceTests(TestCase):
             email="member@example.com",
             password="password123",
         )
-        self.project1 = Project.objects.create(
-            name="Project One",
-            key="PONE",
-            owner=self.admin,
-        )
-        self.project2 = Project.objects.create(
-            name="Project Two",
-            key="PTWO",
-            owner=self.admin,
-        )
+        self.project1 = ProjectService.create_project(self.admin, "Project One", "PONE")
+        self.project2 = ProjectService.create_project(self.admin, "Project Two", "PTWO")
 
     def test_is_global_admin(self):
         self.assertTrue(PermissionService.is_global_admin(self.admin))
@@ -157,11 +149,7 @@ class GlobalUserManagementViewTests(TestCase):
             email="member@example.com",
             password="password123",
         )
-        self.project = Project.objects.create(
-            name="Project Gamma",
-            key="GAM",
-            owner=self.admin,
-        )
+        self.project = ProjectService.create_project(self.admin, "Project Gamma", "GAM")
 
     def test_index_view_forbidden_for_member(self):
         self.client.force_login(self.member)
@@ -234,36 +222,60 @@ class GlobalAdminProjectMultiTenancyTests(TestCase):
             email="user2@example.com",
             password="password123",
         )
-        self.project1 = Project.objects.create(
-            name="Project Alpha",
-            key="ALP",
-            owner=self.member1,
-        )
-        self.project2 = Project.objects.create(
-            name="Project Beta",
-            key="BET",
-            owner=self.member2,
-        )
+        self.project1 = ProjectService.create_project(self.member1, "Project Alpha", "ALP")
+        self.project2 = ProjectService.create_project(self.member2, "Project Beta", "BET")
 
-    def test_global_admin_sees_all_projects_on_dashboard(self):
-        admin_projects = ProjectService.get_user_projects_summary(self.admin)
-        self.assertEqual(len(admin_projects), 2)
-        keys = [p["key"] for p in admin_projects]
-        self.assertIn("ALP", keys)
-        self.assertIn("BET", keys)
+    def test_global_admin_sees_only_assigned_projects_on_dashboard(self) -> None:
+        self.assertEqual(ProjectService.get_user_projects_summary(self.admin), [])
+        ProjectMembership.objects.create(user=self.admin, project=self.project1, role=ProjectRole.VIEWER)
+        projects = ProjectService.get_user_projects_summary(self.admin)
+        self.assertEqual([(project["id"], project["role"]) for project in projects], [(self.project1.id, "viewer")])
 
     def test_global_member_only_sees_assigned_projects(self):
         user1_projects = ProjectService.get_user_projects_summary(self.member1)
         self.assertEqual(len(user1_projects), 1)
         self.assertEqual(user1_projects[0]["key"], "ALP")
 
-    def test_global_admin_can_access_any_project_board(self):
+    def test_global_admin_with_viewer_membership_cannot_write(self) -> None:
         self.client.force_login(self.admin)
-        response = self.client.get(f"/projects/{self.project1.slug}/board/")
-        self.assertEqual(response.status_code, 200)
+        board_url = f"/projects/{self.project1.slug}/board/"
+        issue_create_url = f"/projects/{self.project1.slug}/issues/new/"
+        self.assertEqual(self.client.get(board_url).status_code, 404)
+        self.assertEqual(self.client.post(issue_create_url, {"title": "Forbidden"}).status_code, 404)
 
-        response2 = self.client.get(f"/projects/{self.project2.slug}/board/")
-        self.assertEqual(response2.status_code, 200)
+        ProjectMembership.objects.create(user=self.admin, project=self.project1, role=ProjectRole.VIEWER)
+        self.assertEqual(self.client.get(board_url).status_code, 200)
+        self.assertEqual(self.client.post(issue_create_url, {"title": "Forbidden"}).status_code, 403)
+        self.assertEqual(self.client.get(f"/projects/{self.project2.slug}/board/").status_code, 404)
+
+    def test_global_user_management_scopes_project_data_and_writes(self) -> None:
+        ProjectMembership.objects.create(user=self.admin, project=self.project1, role=ProjectRole.ADMIN)
+        self.client.force_login(self.admin)
+        props = self.client.get("/users/", HTTP_X_INERTIA="true").json()["props"]
+        self.assertEqual([project["id"] for project in props["projects"]], [self.project1.id])
+        member2 = next(user for user in props["users"] if user["id"] == self.member2.id)
+        self.assertEqual(member2["memberships"], [])
+
+        with self.assertRaises(ValidationError):
+            GlobalUserService.update_user_project_access(
+                self.admin,
+                self.member2.id,
+                [
+                    {"project_id": self.project1.id, "role": ProjectRole.MEMBER},
+                    {"project_id": self.project2.id, "role": ProjectRole.ADMIN},
+                ],
+            )
+        self.assertFalse(ProjectMembership.objects.filter(user=self.member2, project=self.project1).exists())
+
+        with self.assertRaises(ValidationError):
+            GlobalUserService.create_user(
+                self.admin,
+                "outside",
+                "outside@example.com",
+                "Str0ng-Passphrase!",
+                project_access=[{"project_id": self.project2.id, "role": ProjectRole.MEMBER}],
+            )
+        self.assertFalse(User.objects.filter(username="outside").exists())
 
     def test_global_member_cannot_access_unassigned_project(self):
         self.client.force_login(self.member1)

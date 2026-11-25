@@ -3,10 +3,14 @@ Regressionstests für die Fixes aus dem Code-Review (Security, Kanban-Ordering, 
 """
 import shutil
 import tempfile
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
+from django.core.files.storage import FileSystemStorage
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.db import connection
 from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -28,6 +32,7 @@ from tracker.services import (
     IssueService,
     ProjectService,
 )
+from tracker.services.invitations import InvitationService
 
 User = get_user_model()
 STRONG_PASSWORD = "Sehr-Sicheres-Passwort-42"
@@ -159,6 +164,32 @@ class IssueValidationTests(ReviewFixesBase):
         )
         self.assertIn("title", self.client.session["_inertia_errors"])
 
+    def test_title_length_on_create_and_update(self) -> None:
+        self.client.force_login(self.member)
+        create_url = reverse("issue_create", kwargs={"slug": self.project.slug})
+        self.client.post(create_url, {"title": "a" * 256})
+        self.assertIn("title", self.client.session["_inertia_errors"])
+        self.assertEqual(Issue.objects.filter(project=self.project).count(), 1)
+
+        self.client.post(self.update_url, {"title": "b" * 256})
+        self.assertIn("title", self.client.session["_inertia_errors"])
+        self.issue.refresh_from_db()
+        self.assertEqual(self.issue.title, "Valid title")
+
+        self.client.post(self.update_url, {"title": " " + "c" * 255 + " "})
+        self.issue.refresh_from_db()
+        self.assertEqual(self.issue.title, "c" * 255)
+
+    def test_viewer_receives_read_only_navigation_on_issue_detail(self) -> None:
+        self.client.force_login(self.viewer)
+        response = self.client.get(
+            reverse("issue_detail", kwargs={"slug": self.project.slug, "key": self.issue.key}),
+            HTTP_X_INERTIA="true",
+        )
+        project = response.json()["props"]["detail"]["issue"]["project"]
+        self.assertFalse(project["can_create_issue"])
+        self.assertEqual(project["user_role"], ProjectRole.VIEWER)
+
     def test_viewer_cannot_update(self) -> None:
         self.client.force_login(self.viewer)
         response = self.client.post(self.update_url, {"title": "Hijacked"})
@@ -271,6 +302,12 @@ class AttachmentSecurityTests(ReviewFixesBase):
             AttachmentService.delete_attachment(att.id, self.member)
         self.assertFalse(storage.exists(name))
 
+    @override_settings(DEBUG=True)
+    def test_debug_uses_authenticated_attachment_route(self) -> None:
+        att, response = self._upload_and_download("notes.txt", b"hello", "text/plain")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get(att.file.url).status_code, 404)
+
 
 class ProjectTests(ReviewFixesBase):
     def test_issue_counts_not_multiplied_by_members(self) -> None:
@@ -279,17 +316,81 @@ class ProjectTests(ReviewFixesBase):
         self.assertEqual(summary["total_issues"], 1)
         self.assertEqual(summary["open_issues"], 1)
 
-    def test_project_admin_cannot_delete_project(self) -> None:
+    def test_project_admin_cannot_archive_project(self) -> None:
         self.client.force_login(self.admin_member)
         response = self.client.post(reverse("project_delete", kwargs={"slug": self.project.slug}))
         self.assertEqual(response.status_code, 403)
-        self.assertTrue(Project.objects.filter(pk=self.project.pk).exists())
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.archived_at)
 
-    def test_owner_can_delete_project(self) -> None:
-        self.client.force_login(self.owner)
-        response = self.client.post(reverse("project_delete", kwargs={"slug": self.project.slug}))
-        self.assertRedirects(response, reverse("project_list"), fetch_redirect_response=False)
-        self.assertFalse(Project.objects.filter(pk=self.project.pk).exists())
+    def test_restore_archived_project_keeps_members_and_issues(self) -> None:
+        issue = IssueService.create_issue(self.project, self.member, "Issue after restore")
+        ProjectService.archive_project(self.project, self.owner)
+        with tempfile.TemporaryFile(mode="w+") as output:
+            call_command("restore_archived_project", self.project.slug, stdout=output)
+        self.project.refresh_from_db()
+        self.assertIsNone(self.project.archived_at)
+        self.assertTrue(Issue.objects.filter(pk=issue.pk).exists())
+        self.client.force_login(self.viewer)
+        url = reverse("project_board", kwargs={"slug": self.project.slug})
+        self.assertEqual(self.client.get(url).status_code, 200)
+        self.client.force_login(self.outsider)
+        self.assertEqual(self.client.get(url).status_code, 404)
+
+    def test_restore_leaves_archive_inactive_when_an_attachment_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            issue = IssueService.create_issue(self.project, self.member, "Issue with a missing file")
+            attachment = AttachmentService.upload_attachment(
+                issue, SimpleUploadedFile("notes.txt", b"retained"), self.member
+            )
+            attachment.file.storage.delete(attachment.file.name)
+            ProjectService.archive_project(self.project, self.owner)
+            with self.assertRaisesMessage(CommandError, "Anhangsdateien"):
+                call_command("restore_archived_project", self.project.slug)
+        self.project.refresh_from_db()
+        self.assertIsNotNone(self.project.archived_at)
+
+    def test_archive_preserves_issues_history_and_files(self) -> None:
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            issue = IssueService.create_issue(self.project, self.member, "Archived issue")
+            attachment = AttachmentService.upload_attachment(
+                issue, SimpleUploadedFile("notes.txt", b"audit"), self.member
+            )
+            IssueService.soft_delete_issue(issue, self.owner)
+            invite = InvitationService.create_invitation(self.project, self.owner, self.outsider.email)
+            activity_count = issue.activity_logs.count()
+
+            self.client.force_login(self.owner)
+            response = self.client.post(reverse("project_delete", kwargs={"slug": self.project.slug}))
+            self.assertRedirects(response, reverse("project_list"), fetch_redirect_response=False)
+            self.assertEqual(ProjectService.get_user_projects_summary(self.owner), [])
+            self.assertTrue(Issue.objects.filter(pk=issue.pk, is_deleted=True).exists())
+            self.assertEqual(issue.activity_logs.count(), activity_count)
+            self.assertTrue(attachment.file.storage.exists(attachment.file.name))
+            self.assertFalse(InvitationService.get_invitation_by_token(invite.token).is_valid)
+
+    def test_purge_only_removes_archived_projects_and_can_be_retried(self) -> None:
+        with tempfile.TemporaryDirectory() as media_root, override_settings(MEDIA_ROOT=media_root):
+            issue = IssueService.create_issue(self.project, self.member, "Issue to purge")
+            attachment = AttachmentService.upload_attachment(
+                issue, SimpleUploadedFile("notes.txt", b"audit"), self.member
+            )
+            storage = attachment.file.storage
+            with self.assertRaises(CommandError):
+                call_command("purge_archived_project", self.project.slug)
+            self.assertTrue(storage.exists(attachment.file.name))
+
+            ProjectService.archive_project(self.project, self.owner)
+            with patch.object(FileSystemStorage, "delete", side_effect=OSError("Storage unavailable")):
+                with self.assertRaises(CommandError):
+                    call_command("purge_archived_project", self.project.slug)
+            self.assertTrue(IssueAttachment.objects.filter(pk=attachment.pk).exists())
+
+            with tempfile.TemporaryFile(mode="w+") as output:
+                call_command("purge_archived_project", self.project.slug, stdout=output)
+            self.assertFalse(Project.objects.filter(pk=self.project.pk).exists())
+            self.assertFalse(Issue.objects.filter(pk=issue.pk).exists())
+            self.assertFalse(storage.exists(attachment.file.name))
 
     def test_comment_permission_queries_do_not_grow_with_comments(self) -> None:
         issue = IssueService.create_issue(self.project, self.member, "Discussed")
@@ -319,9 +420,10 @@ class GlobalUserManagementFixTests(ReviewFixesBase):
         self.assertFalse(deleted)
         self.member.refresh_from_db()
         self.assertFalse(self.member.is_active)
-        self.assertFalse(ProjectMembership.objects.filter(user=self.member).exists())
+        self.assertTrue(ProjectMembership.objects.filter(user=self.member, project=self.project).exists())
 
     def test_delete_user_without_content_deletes(self) -> None:
+        ProjectMembership.objects.create(user=self.global_admin, project=self.project, role=ProjectRole.ADMIN)
         self.assertTrue(GlobalUserService.delete_user(self.global_admin, self.viewer.id))
         self.assertFalse(User.objects.filter(pk=self.viewer.pk).exists())
 
@@ -359,6 +461,7 @@ class GlobalUserManagementFixTests(ReviewFixesBase):
         self.assertFalse(self.member.is_superuser)
 
     def test_project_owner_keeps_admin_role(self) -> None:
+        ProjectMembership.objects.create(user=self.global_admin, project=self.project, role=ProjectRole.ADMIN)
         self.client.force_login(self.global_admin)
         self.client.post(
             reverse("user_project_access", kwargs={"user_id": self.owner.id}),

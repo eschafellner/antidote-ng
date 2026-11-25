@@ -14,6 +14,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  canChangeStatus: {
+    type: Boolean,
+    default: false,
+  },
   isFocused: {
     type: Boolean,
     default: false,
@@ -123,7 +127,7 @@ const changeStatus = newStatus => {
         <IssuePriorityBadge :priority="issue.priority" :show-label="false" />
 
         <!-- Quick Status Dropdown (Accessible / Keyboard fallback) -->
-        <div class="relative">
+        <div v-if="canChangeStatus" class="relative">
           <button
             type="button"
             class="p-1 rounded text-slate-300 hover:text-slate-600 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"

@@ -8,7 +8,7 @@ import inertia
 from tracker.models.project import Project
 from tracker.services.projects import ProjectService
 from tracker.services.permissions import PermissionService
-from tracker.views.utils import parse_request_data, format_validation_errors, flash_errors
+from tracker.views.utils import parse_request_data, format_validation_errors, flash_errors, flash_message
 
 
 @login_required
@@ -89,13 +89,11 @@ def project_update_view(request: HttpRequest, slug: str) -> HttpResponse:
 @require_http_methods(["POST", "DELETE"])
 def project_delete_view(request: HttpRequest, slug: str) -> HttpResponse:
     """
-    Delete a project. Admin/Owner only.
+    Archiviert ein Projekt und erhält seine Daten.
     """
     project = get_object_or_404(Project, slug=slug)
     if not PermissionService.can_view_project(request.user, project):
         raise Http404("Project not found.")
-    if not PermissionService.can_delete_project(request.user, project):
-        raise PermissionDenied("You do not have permission to delete this project.")
-
-    ProjectService.delete_project(project=project, actor=request.user)
+    ProjectService.archive_project(project=project, actor=request.user)
+    flash_message(request, f"Project {project.name} was archived.")
     return redirect("project_list")

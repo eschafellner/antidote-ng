@@ -100,7 +100,7 @@ class InvitationService:
             raise PermissionDenied("You must be logged in to accept an invitation.")
 
         with transaction.atomic():
-            invitation = ProjectInvitation.objects.select_for_update().filter(token=token).first()
+            invitation = ProjectInvitation.objects.select_for_update().select_related("project").filter(token=token).first()
             if not invitation or not invitation.is_valid:
                 raise ValidationError({"token": "This invitation link is invalid or has expired."})
             if user.email.strip().casefold() != invitation.email.strip().casefold():

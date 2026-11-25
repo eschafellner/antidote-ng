@@ -96,7 +96,7 @@ const resetFilters = () => {
         </div>
 
         <button
-          v-if="project.can_create_issue !== false"
+          v-if="project.can_create_issue === true"
           type="button"
           class="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-indigo-600 rounded-lg shadow-xs hover:bg-indigo-700 transition-colors self-start sm:self-auto"
           @click="showCreateModal = true"
